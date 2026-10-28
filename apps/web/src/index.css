@@ -89,6 +89,13 @@ body,
 .vl-label--cluster::before {
   border-style: dotted;
 }
+.vl-label--nebula {
+  color: rgb(255 140 170 / 0.85);
+}
+.vl-label--nebula::before {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
 /* Spiral arms: large structures, labelled in spaced small caps without a marker. */
 .vl-label--region {
   padding-left: 4px;

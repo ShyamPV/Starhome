@@ -4,9 +4,9 @@ A scientifically grounded, fully explorable 3D model of the Milky Way in the bro
 You can fly from a planet's surface out to a view of the whole barred spiral, with
 stars rendered everywhere, not just around the Sun.
 
-> Status: **deliverable 3 of 7** (precise ephemerides, the live sky from anywhere on Earth,
-> constellations, satellites, rise/set times). See [docs/PLAN.md](docs/PLAN.md) for the
-> roadmap, the rendering approach and the risks.
+> Status: **deliverable 4 of 7** (volumetric 3D nebulae you can fly through, nearby dust
+> clouds of the Gould Belt). See [docs/PLAN.md](docs/PLAN.md) for the roadmap, the
+> rendering approach and the risks.
 
 ## Quick start
 
@@ -72,6 +72,9 @@ e2e               Playwright tests
 | Globular clusters (157): positions, distances, luminosities, sizes, metallicities | Harris 1996 (2010 edition) | Real |
 | Individual stars inside globular clusters | Synthesized from each cluster's real luminosity, size and [Fe/H] | **Modeled** |
 | Dust: extinction and reddening of every star, dust lanes, Great Rift | Smooth 3D model calibrated to observed extinction | **Modeled** (validated, see below) |
+| Nearby dark clouds (Taurus, ρ Oph, Coalsack, Orion A/B, Aquila Rift, ...) | Gaia-based distances (Zucker et al. 2019/2020); smooth blobs | Real positions, **modeled** shapes |
+| Nebulae (19): position, distance, size, brightness | Literature values (sources in each object's panel) | Real |
+| Nebulae: 3D structure, colours | Parametric models of published morphology; emission-line colours | **Modeled** |
 | Spiral arm positions near the Sun | Reid et al. 2019 (BeSSeL maser parallaxes) | Real fit |
 | Spiral arms on the far side of the Galaxy | Extrapolated log spirals | **Modeled** |
 | Planet colours | Flat approximations | Artistic placeholder (textures in deliverable 7) |
@@ -89,8 +92,8 @@ the catalogue has them.
 - **Dust:** A_V ≈ 24 toward Sgr A*, ~2.6 through Baade's window (observed ~1.5–2), < 0.1 at
   the poles, ~0.7 mag/kpc in the plane. Against the measured reddening of all 157 Harris
   globular clusters it ranks sight lines correctly (Spearman ρ ≈ 0.88) and is typically
-  0.6–0.7× the measured value. It is smooth, so it misses individual clouds (ρ Ophiuchi in
-  front of M4, for example).
+  0.7× the measured value; with the nearby clouds added, M4 behind ρ Ophiuchi comes out at
+  A_V 1.1 (measured 1.1).
 - **Brightness on screen:** an automatic exposure brightens views from outside the Galaxy
   (where less light reaches the camera). Unresolved light gets a separate "Milky Way glow"
   gain, as planetarium software does: this is a display choice, not a physical change.
@@ -112,6 +115,7 @@ the catalogue has them.
   Globular Clusters*, https://physics.mcmaster.ca/~harris/mwgc.dat. Supplied free of
   charge; redistributions must refer to this source.
 - Drimmel & Spergel 2001 (dust disc scale height); Lallement et al. 2014 (Local Bubble);
+  Zucker et al. 2019, 2020 (distances to local molecular clouds);
   Cardelli, Clayton & Mathis 1989 (extinction law, R_V = 3.1); Flynn et al. 2006 (local
   disc luminosity).
 - NASA Planetary Fact Sheets; IAU WGCCRE 2015 rotation elements.

@@ -3,6 +3,7 @@ import type { CellBuffers, CellRequest } from './cells';
 import type { ClusterBuffers, ClusterRequest } from './clusters';
 import type { DustMap } from './dust';
 import type { GlowOptions } from './glow';
+import type { NebulaRequest, NebulaVolume } from './nebulae';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import type { TileRequest } from './tiles';
 
@@ -56,6 +57,10 @@ export class GalaxyWorkerPool {
 
   generateCluster(request: ClusterRequest): Promise<ClusterBuffers> {
     return this.send({ type: 'cluster', request });
+  }
+
+  generateNebula(request: NebulaRequest): Promise<NebulaVolume> {
+    return this.send({ type: 'nebula', request });
   }
 
   buildDustMap(): Promise<DustMap> {

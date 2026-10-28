@@ -20,6 +20,8 @@ const DESTINATIONS: { id: string; label: string; hint: string }[] = [
   { id: 'milky-way', label: 'The whole Galaxy', hint: 'Seen from above the disc' },
   { id: 'sgr-a-star', label: 'Galactic centre', hint: 'Sagittarius A*' },
   { id: 'ngc-5139', label: 'Omega Centauri', hint: 'Largest globular cluster, 5.2 kpc' },
+  { id: 'm42', label: 'Orion Nebula', hint: 'Fly into a star-forming region' },
+  { id: 'm16', label: 'Pillars of Creation', hint: 'Eagle Nebula, 1.7 kpc' },
   { id: 'lmc', label: 'Large Magellanic Cloud', hint: 'Satellite galaxy, 50 kpc' },
 ];
 
@@ -38,7 +40,7 @@ function Heading({ children }: { children: ReactNode }) {
 }
 
 function GalaxyPanel() {
-  const { engine, orbits, labels, dust, clusters, arms, view, set } = useApp();
+  const { engine, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, view, set } = useApp();
   const go = (id: string) => {
     // Destinations are places in the Galaxy: leave the view from the ground first.
     if (view === 'sky') {
@@ -66,6 +68,8 @@ function GalaxyPanel() {
       <Toggle label="Dust and extinction" checked={dust} onChange={(v) => set({ dust: v })} />
       <Toggle label="Globular clusters" checked={clusters} onChange={(v) => set({ clusters: v })} />
       <Toggle label="Spiral arm labels" checked={arms} onChange={(v) => set({ arms: v })} />
+      <Toggle label="Nebulae" checked={nebulae} onChange={(v) => set({ nebulae: v })} />
+      <Toggle label="Hubble-palette colours" checked={nebulaPalette === 'enhanced'} onChange={(v) => set({ nebulaPalette: v ? 'enhanced' : 'scientific' })} />
       <Heading>Controls</Heading>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] text-ink-dim">
         <dt className="font-mono text-ink">Drag</dt>
@@ -98,7 +102,7 @@ function ComingSoon({ title, deliverable, items }: { title: string; deliverable:
 }
 
 function SettingsPanel() {
-  const { quality, exposure, glow, bloom, theme, set } = useApp();
+  const { quality, exposure, glow, nebulaBrightness, bloom, theme, set } = useApp();
   const presets: QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
   const themes: { id: Theme; label: string }[] = [
     { id: 'default', label: 'Default' },
@@ -119,6 +123,18 @@ function SettingsPanel() {
       <input type="range" min={1} max={80} step={0.5} value={exposure} onChange={(e) => set({ exposure: Number(e.target.value) })} className="w-full" aria-label="Exposure" />
       <Heading>Milky Way glow</Heading>
       <input type="range" min={1} max={12} step={0.5} value={glow} onChange={(e) => set({ glow: Number(e.target.value) })} className="w-full" aria-label="Milky Way glow" />
+      <Heading>Nebula brightness</Heading>
+      <input
+        type="range"
+        min={0.2}
+        max={5}
+        step={0.1}
+        value={nebulaBrightness}
+        onChange={(e) => set({ nebulaBrightness: Number(e.target.value) })}
+        className="w-full"
+        aria-label="Nebula brightness"
+      />
+      <p className="text-[10px] leading-snug text-ink-faint">Each nebula is exposed for its own surface brightness, like a photograph; this scales them all.</p>
       <Toggle label="Bloom" checked={bloom} onChange={(v) => set({ bloom: v })} />
       <Heading>Theme</Heading>
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
@@ -177,7 +193,7 @@ export function NavRail() {
 
 /** Pushes settings from the store into the engine and the document theme. */
 export function useEngineSettings() {
-  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, theme, view, location, skyLayers } = useApp();
+  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, nebulaBrightness, theme, view, location, skyLayers } = useApp();
   useEffect(() => engine?.setQuality(quality), [engine, quality]);
   useEffect(() => engine?.setExposure(exposure), [engine, exposure]);
   useEffect(() => engine?.setDiffuseGain(glow), [engine, glow]);
@@ -190,6 +206,9 @@ export function useEngineSettings() {
   useEffect(() => engine?.setLayerVisible('dust', dust), [engine, dust]);
   useEffect(() => engine?.setLayerVisible('clusters', clusters), [engine, clusters]);
   useEffect(() => engine?.setLayerVisible('arms', arms), [engine, arms]);
+  useEffect(() => engine?.setLayerVisible('nebulae', nebulae), [engine, nebulae]);
+  useEffect(() => engine?.setNebulaPalette(nebulaPalette), [engine, nebulaPalette]);
+  useEffect(() => engine?.setNebulaBrightness(nebulaBrightness), [engine, nebulaBrightness]);
   useEffect(() => {
     document.documentElement.classList.remove('theme-night', 'theme-contrast');
     if (theme !== 'default') document.documentElement.classList.add(`theme-${theme}`);

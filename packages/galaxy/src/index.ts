@@ -8,5 +8,7 @@ export * from './glow';
 export * from './cells';
 export * from './tiles';
 export * from './clusters';
+export * from './nebulae';
+export * from './nebulaCatalog';
 export * from './client';
 export type * from './protocol';

@@ -83,6 +83,15 @@ export const NAMED_STARS: readonly NamedStar[] = [
   { id: 'eta-carinae', name: 'Eta Carinae', designation: 'η Car', ra: 161.2648, dec: -59.6845, distPc: 2300, vmag: 4.3, bv: 0.61, spectralType: 'LBV', constellation: 'Carina', note: 'Luminous blue variable binary; underwent the "Great Eruption" in the 1840s.' },
   { id: 'vy-cma', name: 'VY Canis Majoris', designation: 'VY CMa', ra: 110.743, dec: -25.7675, distPc: 1170, vmag: 7.9, bv: 2.24, spectralType: 'M3-5e Ia', constellation: 'Canis Major', note: 'One of the largest known stars by radius.' },
   { id: 'uy-scuti', name: 'UY Scuti', designation: 'UY Sct', ra: 276.9028, dec: -12.4664, distPc: 2900, vmag: 11.2, bv: 3.0, spectralType: 'M4Ia', constellation: 'Scutum', note: 'Red supergiant; radius estimates have ranged widely.' },
+  // Stars embedded in nebulae (distances are their clusters': Orion Nebula Cluster, Pleiades).
+  { id: 'theta1-ori-c', name: 'θ¹ Orionis C', designation: 'θ¹ Ori C', ra: 83.8186, dec: -5.3897, distPc: 414, vmag: 5.13, bv: 0.02, spectralType: 'O7Vp', constellation: 'Orion', note: 'Brightest star of the Trapezium; its ultraviolet light makes the Orion Nebula glow.' },
+  { id: 'alcyone', name: 'Alcyone', designation: 'η Tau', ra: 56.8712, dec: 24.1051, distPc: 136, vmag: 2.87, bv: -0.09, spectralType: 'B7III', constellation: 'Taurus', note: 'Brightest star of the Pleiades.' },
+  { id: 'atlas', name: 'Atlas', designation: '27 Tau', ra: 57.2906, dec: 24.0534, distPc: 136, vmag: 3.62, bv: -0.07, spectralType: 'B8III', constellation: 'Taurus' },
+  { id: 'electra', name: 'Electra', designation: '17 Tau', ra: 56.2189, dec: 24.1133, distPc: 136, vmag: 3.7, bv: -0.11, spectralType: 'B6III', constellation: 'Taurus' },
+  { id: 'maia', name: 'Maia', designation: '20 Tau', ra: 56.4567, dec: 24.3678, distPc: 136, vmag: 3.87, bv: -0.07, spectralType: 'B8III', constellation: 'Taurus' },
+  { id: 'merope', name: 'Merope', designation: '23 Tau', ra: 56.5815, dec: 23.9484, distPc: 136, vmag: 4.18, bv: -0.06, spectralType: 'B6IV', constellation: 'Taurus', note: 'Lights the Merope Nebula, the brightest patch of the Pleiades’ reflection nebula.' },
+  { id: 'taygeta', name: 'Taygeta', designation: '19 Tau', ra: 56.3021, dec: 24.4672, distPc: 136, vmag: 4.29, bv: -0.11, spectralType: 'B6V', constellation: 'Taurus' },
+  { id: 'pleione', name: 'Pleione', designation: '28 Tau', ra: 57.2967, dec: 24.1367, distPc: 136, vmag: 5.05, bv: -0.08, spectralType: 'B8IVpe', constellation: 'Taurus' },
 ];
 
 /** Magnitude to which NAMED_STARS is complete; synthetic stars brighter than this (from the Sun) are suppressed. */

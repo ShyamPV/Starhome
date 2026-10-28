@@ -13,6 +13,7 @@ interface Flight {
   fromDistance: number;
   toDistance: number;
   toPitch: number | null;
+  toYaw: number | null;
   /** Live destination (follows moving bodies during the flight). */
   getTarget: () => Vector3;
   elapsed: number;
@@ -126,7 +127,13 @@ export class CameraRig {
     return out.set(cp * Math.sin(this.yaw), Math.sin(this.pitch), cp * Math.cos(this.yaw));
   }
 
-  flyTo(getTarget: () => Vector3, distance: number, opts: { duration?: number; pitch?: number; follow?: boolean } = {}): void {
+  /** Yaw and pitch that put the camera in direction `dir` (render frame) from its target. */
+  static anglesFor(dir: Vector3): { yaw: number; pitch: number } {
+    const d = dir.clone().normalize();
+    return { yaw: Math.atan2(d.x, d.z), pitch: Math.max(-1.5697, Math.min(1.5697, Math.asin(d.y))) };
+  }
+
+  flyTo(getTarget: () => Vector3, distance: number, opts: { duration?: number; pitch?: number; yaw?: number; follow?: boolean } = {}): void {
     const dest = getTarget();
     const sep = this.target.distanceTo(dest);
     const far = Math.max(this.distance, distance);
@@ -137,6 +144,8 @@ export class CameraRig {
       fromDistance: this.distance,
       toDistance: Math.max(distance, this.minDistance),
       toPitch: opts.pitch ?? null,
+      // Turn the short way round.
+      toYaw: opts.yaw === undefined ? null : this.yaw + ((((opts.yaw - this.yaw) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI,
       getTarget,
       elapsed: 0,
       duration,
@@ -164,6 +173,7 @@ export class CameraRig {
       const logD = Math.log(f.fromDistance) * (1 - s) + Math.log(f.toDistance) * s + f.arc * Math.sin(Math.PI * t);
       this.distance = Math.exp(logD);
       if (f.toPitch !== null) this.pitch += (f.toPitch - this.pitch) * Math.min(1, dt * 3);
+      if (f.toYaw !== null) this.yaw += (f.toYaw - this.yaw) * Math.min(1, dt * 3);
       if (t >= 1) this.flight = null;
     } else if (this.follow) {
       this.target.copy(this.follow());

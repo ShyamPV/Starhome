@@ -38,6 +38,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer
 import { CameraRig } from './cameraRig';
 import { CLUSTER_FADE_KM, GlobularClusterLayer } from './clusterLayer';
 import { ExposureMeter } from './exposure';
+import { NebulaLayer } from './nebulaLayer';
 import { worldKmToGalPc } from './frames';
 import { SkyMode, type SkyHud, type TonightRow, type WhereToFind } from './skyMode';
 import type { SkyLayers } from './skyView';
@@ -70,6 +71,8 @@ export interface QualitySettings {
   clusterCap: number;
   /** Samples per star along the line of sight through the dust. */
   dustSteps: number;
+  /** Raymarch steps through each nebula (more when close). */
+  nebulaSteps: number;
   bloom: boolean;
   maxPixelRatio: number;
 }
@@ -83,6 +86,7 @@ export const QUALITY: Record<QualityPreset, QualitySettings> = {
     far: { sizePc: 2500, particleLum: 6000, cap: 20_000 },
     clusterCap: 8_000,
     dustSteps: 6,
+    nebulaSteps: 32,
     bloom: false,
     maxPixelRatio: 1,
   },
@@ -94,6 +98,7 @@ export const QUALITY: Record<QualityPreset, QualitySettings> = {
     far: { sizePc: 2000, particleLum: 3000, cap: 30_000 },
     clusterCap: 20_000,
     dustSteps: 10,
+    nebulaSteps: 48,
     bloom: true,
     maxPixelRatio: 1.5,
   },
@@ -105,6 +110,7 @@ export const QUALITY: Record<QualityPreset, QualitySettings> = {
     far: { sizePc: 2000, particleLum: 1500, cap: 50_000 },
     clusterCap: 40_000,
     dustSteps: 14,
+    nebulaSteps: 64,
     bloom: true,
     maxPixelRatio: 2,
   },
@@ -116,6 +122,7 @@ export const QUALITY: Record<QualityPreset, QualitySettings> = {
     far: { sizePc: 2500, particleLum: 800, cap: 80_000 },
     clusterCap: 80_000,
     dustSteps: 20,
+    nebulaSteps: 96,
     bloom: true,
     maxPixelRatio: 2,
   },
@@ -162,7 +169,7 @@ export interface TargetSummary {
   details: Record<string, string>;
 }
 
-export type LayerId = 'dust' | 'clusters' | 'arms';
+export type LayerId = 'dust' | 'clusters' | 'arms' | 'nebulae';
 
 export interface EngineOptions {
   canvas: HTMLCanvasElement;
@@ -206,6 +213,7 @@ export class Engine {
   /** Planets and satellites as points in the sky view. */
   private readonly skyPointMaterial = createStarMaterial(this.shared);
   readonly sky: SkyMode;
+  private readonly nebulae: NebulaLayer;
   private viewMode: ViewMode = 'galaxy';
   /** Daylight dimming of starlight in the sky view. */
   private skyDim = 1;
@@ -287,6 +295,8 @@ export class Engine {
     for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) this.scene.add(layer.group);
     this.sky = new SkyMode(this.skyPointMaterial, this.solar);
     this.scene.add(this.sky.group);
+    this.nebulae = new NebulaLayer(this.pool, this.shared, this.seed);
+    this.scene.add(this.nebulae.group);
     this.applyFades();
 
     // Sgr A*: a black sphere at the event-horizon scale.
@@ -362,6 +372,7 @@ export class Engine {
       this.shared.uDustMap.value = tex;
       this.shared.uDustOn.value = this.dustEnabled ? 1 : 0;
       this.dustMap = map;
+      this.nebulae.setDust(map);
       // The selected object's details gain the modeled extinction now that it can be computed.
       if (this.selected) this.opts.onSelect?.(this.summary(this.selected));
       return map;
@@ -518,6 +529,10 @@ export class Engine {
     if (layer === 'dust') {
       this.dustEnabled = on;
       this.shared.uDustOn.value = on && this.dustMap ? 1 : 0;
+    } else if (layer === 'nebulae') {
+      this.nebulae.visible = on;
+      if (on) this.hiddenKinds.delete('nebula');
+      else this.hiddenKinds.add('nebula');
     } else if (layer === 'clusters') {
       this.clusters.group.visible = on;
       if (on) this.hiddenKinds.delete('cluster');
@@ -530,6 +545,16 @@ export class Engine {
 
   setTime(jd: number): void {
     this.jd = jd;
+  }
+
+  /** Nebula colours: true emission-line colours, or the Hubble ([S II], Halpha, [O III]) palette. */
+  setNebulaPalette(p: 'scientific' | 'enhanced'): void {
+    this.nebulae.setPalette(p);
+  }
+
+  /** Display brightness of nebulae (a long-exposure look; 1 = their true surface brightness). */
+  setNebulaBrightness(boost: number): void {
+    this.nebulae.boost = boost;
   }
 
   get view(): ViewMode {
@@ -624,7 +649,8 @@ export class Engine {
       return;
     }
     this.rig.minDistance = Math.max(0.001, t.radiusKm * 1.05);
-    this.rig.flyTo(t.position, t.viewDistanceKm, { pitch: t.pitch });
+    const from = t.approachFrom ? CameraRig.anglesFor(t.approachFrom) : null;
+    this.rig.flyTo(t.position, t.viewDistanceKm, from ? { pitch: from.pitch, yaw: from.yaw } : { pitch: t.pitch });
   }
 
   /** Modeled V-band extinction from the Sun to a Galactocentric point (pc), or null before the dust map loads. */
@@ -703,6 +729,7 @@ export class Engine {
     // Outside the Galaxy all light is unresolved and the auto exposure already brightens
     // it, so the extra diffuse gain (an inside-the-disc perception effect) eases off.
     this.shared.uDiffuseGain.value = 1 + (this.diffuseGain - 1) / Math.max(1, this.autoExposure);
+    this.nebulae.update(cam, camGal, this.shared.uPixelsPerRadian.value, this.renderer.getPixelRatio(), QUALITY[this.quality].nebulaSteps);
 
     this.updateLabels(cam);
     this.cullLabelsBehindCamera();
@@ -777,6 +804,7 @@ export class Engine {
     // Inside a globular cluster (within ~10 half-light radii), name the cluster as the region.
     const inCluster = nearestTarget?.kind === 'cluster' && nearest!.distanceKm < Math.max(30 * KM_PER_PC, 10 * nearestTarget.radiusKm);
     const h = this.opts.canvas.clientHeight || 1;
+    const insideNebula = this.nebulae.containing(camGal);
     const sky = this.viewMode === 'sky';
     const kmPerPixel = sky ? 0 : (2 * this.rig.distance * Math.tan((this.camera.fov * Math.PI) / 360)) / h;
     const pendingTiles = this.nearTiles.pending + this.farTiles.pending;
@@ -788,7 +816,7 @@ export class Engine {
       l: lbd.l,
       b: lbd.b,
       dPc: lbd.d,
-      region: inCluster ? `${nearestTarget!.name} (globular cluster)` : regionName(kpc[0], kpc[1], kpc[2]),
+      region: insideNebula ? `Inside the ${insideNebula.name}` : inCluster ? `${nearestTarget!.name} (globular cluster)` : regionName(kpc[0], kpc[1], kpc[2]),
       modeled: lbd.d > CATALOG_REACH_PC,
       nearest,
       targetName: this.selected?.name ?? null,
@@ -823,6 +851,7 @@ export class Engine {
     this.pool.dispose();
     for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) layer.dispose();
     this.sky.dispose();
+    this.nebulae.dispose();
     this.glow?.dispose();
     this.catalog?.dispose();
     this.shared.uDustMap.value.dispose();

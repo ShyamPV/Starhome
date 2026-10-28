@@ -16,7 +16,7 @@ scope: `@starhome/*`.
 | 1 | Scaffold, floating-origin camera, GPU star instancing, solar system | **Done** |
 | 2 | Whole-galaxy model: LOD tiles, dust/extinction, globular clusters, Hipparcos/Gaia blending, inside/outside views | **Done**, except Gaia DR3 tiles (see below) |
 | 3 | Ephemerides worker (VSOP87/ELP), Sky view, constellations, SGP4 satellites, time controls, HUD | **Done** (see below) |
-| 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | |
+| 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | **Done** (see below) |
 | 5 | Stars catalogue and HR diagram; exoplanet catalogue and 3D systems | |
 | 6 | Free travel polish, tours, Explore tab, shareable URLs | Warp-to and search done |
 | 7 | Polish, performance, PWA/offline, theming, README attributions | Themes done |
@@ -123,9 +123,44 @@ licensing decision), atmospheric extinction near the horizon, and light pollutio
   hosting) that cannot be built or verified without network access to the archives;
   the blending hook (`realCatalogMagLimit`, extinction-aware) is ready for it.
 - *IndexedDB caching of generated layers* and *WebGPU culling* (deliverable 7, perf).
-- *Dust as visible absorbing volumes* in front of nebulae (deliverable 4).
 
 ## Volumetric nebulae (deliverable 4)
+
+### What landed
+
+- **19 nebulae** with real positions, distances (source shown per object), sizes and
+  integrated magnitudes: Orion, Carina, Eagle, Lagoon, Trifid, Omega, Rosette, Horsehead,
+  North America, Pelican, Tarantula, Helix, Ring, Dumbbell, Cat's Eye, Crab, Veil, the
+  Pleiades reflection nebula, and the Coalsack (as dust).
+- **Volumes:** each is an RGBA 3D texture (40³, 112³ when it fills the view) built in the
+  galaxy workers from a parametric model: blister cavity in front of a dusty wall
+  (Orion), dark pillars silhouetted against a glowing wall (Eagle), shell (Rosette), dust
+  curtain and head (Horsehead), barrel seen end-on (Ring), two tilted rings (Helix),
+  bipolar lobes (Dumbbell, Cat's Eye), synchrotron body caged by filaments (Crab), a thin
+  wrinkled shock (Veil), wisps lit by real Pleiades stars. Channels are Hα, [O III], [S II]
+  (or synchrotron / scattered light) and dust; [O III] sits closest to the ionising
+  stars (tested). The boxes are oriented on the sky by position angle with +z toward the
+  Sun, so arriving from the Sun's side shows the familiar view and you can orbit to see
+  the 3D shape.
+- **Rendering:** front-to-back raymarch in the box (jittered, up to 128 steps), starting
+  at the camera when inside, so you can fly through. Dust attenuates the emission behind
+  it and, through premultiplied blending, the stars and Milky Way behind the nebula.
+  Brightness is calibrated from the integrated magnitude (de-reddened with the dust
+  model) with the same flux convention as the stars, then exposed per object for its
+  surface brightness (like a photograph; a Settings slider scales all of them). Colours:
+  scientific emission-line colours or the Hubble palette.
+- **Nearby clouds:** 13 Gould Belt and Local Bubble wall clouds as Gaussian blobs with
+  Gaia-based distances, added to the dust model with a closed-form line integral (the
+  shader evaluates the same formula per star). This darkens the Coalsack, Taurus and
+  ρ Oph, and fixes the model's reddening toward M4.
+
+**Simplified versus the original plan:** no occupancy grid or impostors (the volumes are
+small enough to march directly at 60 fps); no single-scattering pass (reflection nebulae
+use a precomputed inverse-square illumination); no temporal accumulation; nearby dust
+from a hand-built list of clouds rather than resampled Edenhofer/Lallement 3D maps
+(those files are gigabytes and need an offline pipeline).
+
+### Original design notes
 
 - **Representation:** each nebula is a sparse 3D density texture (64³ to 256³, plus a
   coarse occupancy grid for empty-space skipping), built in a worker from a parametric

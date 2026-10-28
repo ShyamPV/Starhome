@@ -54,6 +54,11 @@ interface AppState {
   dust: boolean;
   clusters: boolean;
   arms: boolean;
+  nebulae: boolean;
+  /** Nebula colours: true emission-line colours, or the Hubble palette. */
+  nebulaPalette: 'scientific' | 'enhanced';
+  /** Display gain for nebulae (1 = true surface brightness). */
+  nebulaBrightness: number;
   theme: Theme;
   rateIndex: number;
   reverse: boolean;
@@ -67,7 +72,7 @@ interface AppState {
   setLocation: (loc: GeoLocation) => void;
   setSkyLayer: (layer: keyof SkyLayers, on: boolean) => void;
   set: (
-    patch: Partial<Pick<AppState, 'view' | 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>,
+    patch: Partial<Pick<AppState, 'view' | 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'nebulae' | 'nebulaPalette' | 'nebulaBrightness' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>,
   ) => void;
 }
 
@@ -90,6 +95,9 @@ export const useApp = create<AppState>((set, get) => ({
   dust: true,
   clusters: true,
   arms: true,
+  nebulae: true,
+  nebulaPalette: 'scientific',
+  nebulaBrightness: 1,
   theme: 'default',
   rateIndex: 0,
   reverse: false,

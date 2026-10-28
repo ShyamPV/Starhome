@@ -1,11 +1,11 @@
-import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, absoluteMagnitude, bvToTeff, raDecDistToGalactocentric, spectralClassFromTeff, type Vec3 } from '@starhome/astro';
+import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, SUN_GALACTOCENTRIC_PC, absoluteMagnitude, bvToTeff, raDecDistToGalactocentric, spectralClassFromTeff, type Vec3 } from '@starhome/astro';
 import { GLOBULAR_CLUSTERS, MOON, NAMED_STARS, PLANETS, SUN } from '@starhome/data';
-import { SATELLITES, SPIRAL_ARMS, armRadius, isModeledArmSegment, xyFromRBeta } from '@starhome/galaxy';
+import { NEBULAE, SATELLITES, SPIRAL_ARMS, armRadius, isModeledArmSegment, xyFromRBeta } from '@starhome/galaxy';
 import { Vector3 } from 'three';
 import { galPcToWorldKm } from './frames';
 import type { SolarSystem } from './solarSystem';
 
-export type TargetKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'black-hole' | 'cluster' | 'galaxy' | 'region';
+export type TargetKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'black-hole' | 'cluster' | 'nebula' | 'galaxy' | 'region';
 
 export interface Target {
   id: string;
@@ -21,6 +21,8 @@ export interface Target {
   viewDistanceKm: number;
   /** Preferred camera pitch on arrival (radians), if any. */
   pitch?: number;
+  /** Arrive looking from this direction (render frame, target to camera), e.g. from the Sun. */
+  approachFrom?: Vector3;
   /** Real data vs. modelled. */
   provenance: 'catalog' | 'ephemeris' | 'model';
   facts: string[];
@@ -140,6 +142,52 @@ export function buildTargets(ss: SolarSystem): Target[] {
       labelRange: labelKpc * KM_PER_KPC,
       galPc,
       apparentMag: c.vt ?? undefined,
+    });
+  }
+
+  const NEBULA_KIND: Record<string, string> = {
+    emission: 'Emission nebula',
+    reflection: 'Reflection nebula',
+    planetary: 'Planetary nebula',
+    snr: 'Supernova remnant',
+    dark: 'Dark nebula',
+  };
+  for (const n of NEBULAE) {
+    const galPc = raDecDistToGalactocentric(n.ra, n.dec, n.distPc);
+    const arcminPc = n.distPc * (Math.PI / 10_800);
+    const sizePc = n.sizeArcmin.map((a) => a * arcminPc);
+    const ly = Math.round(n.distPc * 3.26156).toLocaleString('en-US');
+    const details: Record<string, string> = {
+      Designation: n.designation,
+      Type: NEBULA_KIND[n.kind]!,
+      Distance: `${n.distPc.toLocaleString('en-US')} pc (${ly} ly)`,
+      'Distance source': n.distanceSource,
+      'Apparent size': `${n.sizeArcmin[0]}′ × ${n.sizeArcmin[1]}′`,
+      'True size': sizePc[0]! >= 1 ? `${sizePc[0]!.toFixed(1)} × ${sizePc[1]!.toFixed(1)} pc` : `${(sizePc[0]! * 206_265).toFixed(0)} × ${(sizePc[1]! * 206_265).toFixed(0)} AU`,
+    };
+    if (n.vmag < 50) details['Apparent mag (V)'] = n.vmag.toFixed(1);
+    details['RA / Dec'] = `${n.ra.toFixed(3)}°, ${n.dec.toFixed(3)}°`;
+    targets.push({
+      id: n.id,
+      name: n.name,
+      kind: 'nebula',
+      subtitle: `${NEBULA_KIND[n.kind]} · ${n.designation}`,
+      position: fixed(galPcToWorldKm(galPc)),
+      radiusKm: 0.5 * sizePc[0]! * KM_PER_PC,
+      viewDistanceKm: 2.2 * sizePc[0]! * KM_PER_PC,
+      provenance: 'catalog',
+      facts: [
+        ...n.facts,
+        n.model
+          ? 'Position, distance, size and brightness are measured; the 3D structure is modeled from its published shape.'
+          : 'Drawn as the dust it is: it dims the stars and Milky Way behind it.',
+      ],
+      details,
+      labelRange: 3 * KM_PER_KPC,
+      galPc,
+      apparentMag: n.vmag < 50 ? n.vmag : undefined,
+      // Arrive on the Sun's side, so the first view matches the familiar one from Earth.
+      approachFrom: galPcToWorldKm(SUN_GALACTOCENTRIC_PC).sub(galPcToWorldKm(galPc)).normalize(),
     });
   }
 

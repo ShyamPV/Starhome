@@ -142,11 +142,100 @@ function vertFInv(u: number): number {
   return -Math.sign(u) * DUST.hz * Math.log(1 - a);
 }
 
+// --- Nearby molecular clouds ------------------------------------------------------------
+
+export interface DustCloud {
+  id: string;
+  name: string;
+  /** Galactic longitude and latitude (deg) and distance from the Sun (pc) of the centre. */
+  l: number;
+  b: number;
+  distPc: number;
+  /** Gaussian radius (1 sigma), pc. */
+  sigmaPc: number;
+  /** V extinction through the centre, as seen from the Sun, mag. */
+  peakAv: number;
+}
+
 /**
- * V-band extinction (mag) along the straight path from `a` to `b` (Galactocentric kpc).
- * `jitter` in [0, 1) offsets the samples within their strata.
+ * The Gould Belt and other nearby dark-cloud complexes, as Gaussian blobs of dust on the
+ * wall of the Local Bubble and beyond. Distances follow Zucker et al. 2019/2020 (Gaia
+ * parallaxes of stars behind and in front of each cloud); sizes and peak extinctions are
+ * smooth-cloud approximations, far below the dense cores.
+ */
+export const DUST_CLOUDS: readonly DustCloud[] = [
+  { id: 'taurus', name: 'Taurus clouds', l: 172, b: -15, distPc: 140, sigmaPc: 7, peakAv: 2.5 },
+  { id: 'rho-oph', name: 'Rho Ophiuchi cloud', l: 353, b: 17, distPc: 139, sigmaPc: 4, peakAv: 2.2 },
+  { id: 'lupus', name: 'Lupus clouds', l: 340, b: 13, distPc: 160, sigmaPc: 6, peakAv: 1.2 },
+  { id: 'chamaeleon', name: 'Chamaeleon clouds', l: 299, b: -16, distPc: 185, sigmaPc: 6, peakAv: 2 },
+  { id: 'coalsack', name: 'Coalsack', l: 301, b: -1, distPc: 185, sigmaPc: 6, peakAv: 1.5 },
+  { id: 'cra', name: 'Corona Australis cloud', l: 0, b: -18, distPc: 150, sigmaPc: 3, peakAv: 2 },
+  { id: 'pipe', name: 'Pipe Nebula', l: 0, b: 5, distPc: 160, sigmaPc: 3, peakAv: 2 },
+  { id: 'perseus', name: 'Perseus molecular cloud', l: 159, b: -20, distPc: 295, sigmaPc: 10, peakAv: 2 },
+  { id: 'orion-a', name: 'Orion A cloud', l: 211, b: -19, distPc: 410, sigmaPc: 14, peakAv: 2.5 },
+  { id: 'orion-b', name: 'Orion B cloud', l: 206, b: -15, distPc: 410, sigmaPc: 9, peakAv: 2 },
+  { id: 'cepheus', name: 'Cepheus Flare', l: 110, b: 15, distPc: 350, sigmaPc: 15, peakAv: 1.2 },
+  { id: 'aquila-rift', name: 'Aquila Rift', l: 28, b: 4, distPc: 250, sigmaPc: 25, peakAv: 2.5 },
+  { id: 'cygnus-rift', name: 'Cygnus Rift', l: 78, b: 0, distPc: 800, sigmaPc: 60, peakAv: 2 },
+];
+
+/** Cloud centres (Galactocentric kpc), sigmas (kpc) and the constant k = rho0 sigma sqrt(pi/2) of the line integral. */
+export const CLOUD_PARAMS: readonly { center: Vec3; sigma: number; k: number }[] = DUST_CLOUDS.map((c) => {
+  const lr = c.l * (Math.PI / 180);
+  const br = c.b * (Math.PI / 180);
+  const d = c.distPc / 1000;
+  const center: Vec3 = [-R0_PC / 1000 + d * Math.cos(br) * Math.cos(lr), d * Math.cos(br) * Math.sin(lr), Z0_PC / 1000 + d * Math.sin(br)];
+  const sigma = c.sigmaPc / 1000;
+  // Peak column through the centre = rho0 sigma sqrt(2 pi); the line integral uses rho0 sigma sqrt(pi/2).
+  return { center, sigma, k: c.peakAv / 2 };
+});
+
+/** Abramowitz & Stegun 7.1.26 (|error| < 1.5e-7); the shader uses the same formula. */
+function erf(x: number): number {
+  const s = Math.sign(x);
+  const a = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * a);
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-a * a);
+  return s * y;
+}
+
+/**
+ * Extinction (mag) by the nearby clouds along the segment a -> b (Galactocentric kpc).
+ * The line integral of a Gaussian blob is closed-form:
+ *   A = rho0 sigma sqrt(pi/2) exp(-c/2) [erf((1+beta)|v|/sqrt2) - erf(beta|v|/sqrt2)]
+ * with o = (a - centre)/sigma, v = (b - a)/sigma, beta = o.v/|v|^2, c = |o|^2 - (o.v)^2/|v|^2.
+ */
+export function cloudExtinction(a: Vec3, b: Vec3): number {
+  let sum = 0;
+  for (const cl of CLOUD_PARAMS) {
+    const ox = (a[0] - cl.center[0]) / cl.sigma;
+    const oy = (a[1] - cl.center[1]) / cl.sigma;
+    const oz = (a[2] - cl.center[2]) / cl.sigma;
+    const vx = (b[0] - a[0]) / cl.sigma;
+    const vy = (b[1] - a[1]) / cl.sigma;
+    const vz = (b[2] - a[2]) / cl.sigma;
+    const vv = vx * vx + vy * vy + vz * vz;
+    if (vv < 1e-12) continue;
+    const ov = ox * vx + oy * vy + oz * vz;
+    const c = ox * ox + oy * oy + oz * oz - (ov * ov) / vv;
+    if (c > 30) continue;
+    const vl = Math.sqrt(vv);
+    const beta = ov / vv;
+    sum += cl.k * Math.exp(-c / 2) * (erf(((1 + beta) * vl) / Math.SQRT2) - erf((beta * vl) / Math.SQRT2));
+  }
+  return sum;
+}
+
+/**
+ * V-band extinction (mag) along the straight path from `a` to `b` (Galactocentric kpc):
+ * the smooth Galactic dust plus the nearby clouds. `jitter` in [0, 1) offsets the samples
+ * within their strata.
  */
 export function extinctionV(map: DustMap, a: Vec3, b: Vec3, samples = 48, jitter = 0.5): number {
+  return smoothExtinctionV(map, a, b, samples, jitter) + cloudExtinction(a, b);
+}
+
+function smoothExtinctionV(map: DustMap, a: Vec3, b: Vec3, samples: number, jitter: number): number {
   const rel: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const len = Math.hypot(rel[0], rel[1], rel[2]);
   if (len === 0) return 0;

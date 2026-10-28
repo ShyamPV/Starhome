@@ -3,6 +3,7 @@ import type { CellBuffers, CellRequest } from './cells';
 import type { ClusterBuffers, ClusterRequest } from './clusters';
 import type { DustMap } from './dust';
 import type { GlowOptions } from './glow';
+import type { NebulaRequest, NebulaVolume } from './nebulae';
 import type { TileRequest } from './tiles';
 
 export type WorkerRequest =
@@ -10,7 +11,8 @@ export type WorkerRequest =
   | { id: number; type: 'cell'; request: CellRequest }
   | { id: number; type: 'tile'; request: TileRequest }
   | { id: number; type: 'cluster'; request: ClusterRequest }
-  | { id: number; type: 'dust' };
+  | { id: number; type: 'dust' }
+  | { id: number; type: 'nebula'; request: NebulaRequest };
 
 export type WorkerResponse =
   | { id: number; type: 'glow'; buffers: StarBuffers }
@@ -18,4 +20,5 @@ export type WorkerResponse =
   | { id: number; type: 'tile'; buffers: StarBuffers }
   | { id: number; type: 'cluster'; buffers: ClusterBuffers }
   | { id: number; type: 'dust'; buffers: DustMap }
+  | { id: number; type: 'nebula'; buffers: NebulaVolume }
   | { id: number; type: 'error'; message: string };

@@ -76,3 +76,20 @@ test('sky view: look up from a chosen place, find a planet, return to the galaxy
   await page.getByRole('button', { name: 'Back to the galaxy' }).click();
   await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
 });
+
+test('nebulae: search one, see where to find it, toggle the layer', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press('Control+K');
+  await page.keyboard.type('Ring Nebula');
+  await expect(page.getByRole('option').first()).toContainText('Planetary nebula');
+  await page.keyboard.press('Enter');
+  const panel = page.getByRole('complementary', { name: 'Ring Nebula details' });
+  await expect(panel).toContainText('Gaia DR3 parallax');
+  await expect(panel.getByLabel('Where to find it')).toContainText('Lyra', { timeout: 30_000 });
+  await expect(page.getByLabel('Galactic position')).toContainText('Ring Nebula', { timeout: 45_000 });
+  const toggle = page.getByRole('checkbox', { name: 'Nebulae' });
+  await expect(toggle).toBeChecked();
+  await page.getByText('Nebulae', { exact: true }).click();
+  await expect(toggle).not.toBeChecked();
+});
