@@ -8,7 +8,7 @@ export function Viewport() {
   const labelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const { quality, setHud, setSelected, setEngine } = useApp.getState();
+    const { quality, setHud, setSelected, setEngine, setTargets, setExoplanets } = useApp.getState();
     const engine = new Engine({
       canvas: canvasRef.current!,
       labelRoot: labelRef.current!,
@@ -16,6 +16,9 @@ export function Viewport() {
       hipparcosUrl: `${import.meta.env.BASE_URL}data/hipparcos.bin`,
       onHud: setHud,
       onSelect: setSelected,
+      exoplanetsUrl: `${import.meta.env.BASE_URL}data/exoplanets.json`,
+      onTargetsChanged: setTargets,
+      onExoplanets: setExoplanets,
     });
     engine.setLocation(useApp.getState().location);
     setEngine(engine);
@@ -30,7 +33,8 @@ export function Viewport() {
   return (
     <div className="absolute inset-0">
       <canvas ref={canvasRef} className="block h-full w-full touch-none outline-none" aria-label="3D view of the Milky Way" />
-      <div ref={labelRef} className="pointer-events-none absolute inset-0 overflow-hidden" />
+      {/* isolate: the label renderer sets z-index per label; keep those inside this layer. */}
+      <div ref={labelRef} className="pointer-events-none absolute inset-0 isolate overflow-hidden" />
     </div>
   );
 }

@@ -8,11 +8,21 @@ import {
   dateToJulian,
   galactocentricToLbd,
   raDecDistToGalactocentric,
+  starPhysics,
   teffToLinearRgb,
   type GeoLocation,
+  type LifeStage,
   type Vec3,
 } from '@starhome/astro';
-import { HIPPARCOS_COMPLETE_TO_VMAG, NAMED_STARS, NAMED_STARS_COMPLETE_TO_VMAG, loadHipparcos } from '@starhome/data';
+import {
+  HIPPARCOS_COMPLETE_TO_VMAG,
+  NAMED_STARS,
+  NAMED_STARS_COMPLETE_TO_VMAG,
+  loadExoplanets,
+  loadHipparcos,
+  type ExoHost,
+  type ExoplanetCatalog,
+} from '@starhome/data';
 import { CELL_SIZE_PC, DUST, GalaxyWorkerPool, extinctionV, regionName, type DustMap } from '@starhome/galaxy';
 import {
   ACESFilmicToneMapping,
@@ -38,6 +48,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer
 import { CameraRig } from './cameraRig';
 import { CLUSTER_FADE_KM, GlobularClusterLayer } from './clusterLayer';
 import { ExposureMeter } from './exposure';
+import { ExoplanetLayer } from './exoplanetLayer';
 import { NebulaLayer } from './nebulaLayer';
 import { worldKmToGalPc } from './frames';
 import { SkyMode, type SkyHud, type TonightRow, type WhereToFind } from './skyMode';
@@ -45,7 +56,7 @@ import type { SkyLayers } from './skyView';
 import { SolarSystem } from './solarSystem';
 import { createSharedStarUniforms, createStarMaterial, setFades } from './starMaterial';
 import { GridStreamer, StarBatch, starBatchFromBuffers, type GridLayerOptions } from './starLayers';
-import { buildTargets, type Target, type TargetKind } from './targets';
+import { buildTargets, starPhysicsDetails, type Target, type TargetKind } from './targets';
 
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra';
 
@@ -169,7 +180,24 @@ export interface TargetSummary {
   details: Record<string, string>;
 }
 
-export type LayerId = 'dust' | 'clusters' | 'arms' | 'nebulae';
+export type LayerId = 'dust' | 'clusters' | 'arms' | 'nebulae' | 'exoplanets';
+
+/** A star on the Hertzsprung-Russell diagram. */
+export interface HrStar {
+  id: string;
+  name: string;
+  teffK: number;
+  absMagV: number;
+  stage: LifeStage | null;
+  /** Named catalogue star, or exoplanet host from the NASA archive. */
+  source: 'named' | 'host';
+}
+
+export interface HrData {
+  real: HrStar[];
+  /** Synthetic neighbourhood population (modeled). */
+  modeled: { teff: Float32Array; absMagV: Float32Array; evolved: Uint8Array };
+}
 
 export interface EngineOptions {
   canvas: HTMLCanvasElement;
@@ -179,6 +207,11 @@ export interface EngineOptions {
   seed?: number;
   onHud?: (hud: Hud) => void;
   onSelect?: (target: TargetSummary | null) => void;
+  /** NASA Exoplanet Archive snapshot built by tools/build-exoplanets.mjs. */
+  exoplanetsUrl?: string;
+  /** Called when targets are added after start-up (the exoplanet catalogue loads asynchronously). */
+  onTargetsChanged?: (targets: TargetSummary[]) => void;
+  onExoplanets?: (catalog: ExoplanetCatalog) => void;
 }
 
 /** Real catalogue coverage: beyond this distance from the Sun the scene is mostly modeled. */
@@ -204,7 +237,8 @@ export class Engine {
   private readonly nearMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 1.5 });
   private readonly farMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 5 });
   private readonly glowMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 12 });
-  private readonly catalogMaterial = createStarMaterial(this.shared);
+  /** Real stars; faded out within a few hundred AU, where a planetary system's star sphere takes over. */
+  private readonly catalogMaterial = createStarMaterial(this.shared, { fadeIn: [300 * KM_PER_AU, 3000 * KM_PER_AU] });
   /** The Sun as a point of light, faded in only once we are well outside the planetary system. */
   private readonly sunMaterial = createStarMaterial(this.shared, { fadeIn: [300 * KM_PER_AU, 20_000 * KM_PER_AU] });
   private readonly clusterAggregateMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 4, fadeOut: CLUSTER_FADE_KM });
@@ -214,6 +248,7 @@ export class Engine {
   private readonly skyPointMaterial = createStarMaterial(this.shared);
   readonly sky: SkyMode;
   private readonly nebulae: NebulaLayer;
+  readonly exoplanets: ExoplanetLayer;
   private viewMode: ViewMode = 'galaxy';
   /** Daylight dimming of starlight in the sky view. */
   private skyDim = 1;
@@ -297,6 +332,8 @@ export class Engine {
     this.scene.add(this.sky.group);
     this.nebulae = new NebulaLayer(this.pool, this.shared, this.seed);
     this.scene.add(this.nebulae.group);
+    this.exoplanets = new ExoplanetLayer(this.catalogMaterial, (id) => this.select(id));
+    this.scene.add(this.exoplanets.group);
     this.applyFades();
 
     // Sgr A*: a black sphere at the event-horizon scale.
@@ -332,6 +369,7 @@ export class Engine {
     this.applyPixelSizes();
     this.loadGlow();
     void this.loadCatalog();
+    void this.loadExoplanetCatalog();
 
     this.resize();
     window.addEventListener('resize', this.resize);
@@ -373,6 +411,7 @@ export class Engine {
       this.shared.uDustOn.value = this.dustEnabled ? 1 : 0;
       this.dustMap = map;
       this.nebulae.setDust(map);
+      this.exoplanets.setDust(map);
       // The selected object's details gain the modeled extinction now that it can be computed.
       if (this.selected) this.opts.onSelect?.(this.summary(this.selected));
       return map;
@@ -382,6 +421,23 @@ export class Engine {
     } finally {
       this.loading.delete('Dust');
     }
+  }
+
+  private async loadExoplanetCatalog(): Promise<void> {
+    if (!this.opts.exoplanetsUrl) return;
+    this.loading.add('Exoplanets');
+    const catalog = await loadExoplanets(this.opts.exoplanetsUrl);
+    this.loading.delete('Exoplanets');
+    if (!catalog || this.disposed) return;
+    const added = this.exoplanets.setCatalog(catalog, this.targetById);
+    if (this.dustMap) this.exoplanets.setDust(this.dustMap);
+    for (const t of added) {
+      this.targets.push(t);
+      this.targetById.set(t.id, t);
+      if (t.labelRange > 0) this.addLabel(t);
+    }
+    this.opts.onTargetsChanged?.(this.getTargets());
+    this.opts.onExoplanets?.(catalog);
   }
 
   private loadGlow(): void {
@@ -529,6 +585,8 @@ export class Engine {
     if (layer === 'dust') {
       this.dustEnabled = on;
       this.shared.uDustOn.value = on && this.dustMap ? 1 : 0;
+    } else if (layer === 'exoplanets') {
+      this.exoplanets.setMarkersVisible(on);
     } else if (layer === 'nebulae') {
       this.nebulae.visible = on;
       if (on) this.hiddenKinds.delete('nebula');
@@ -550,6 +608,37 @@ export class Engine {
   /** Nebula colours: true emission-line colours, or the Hubble ([S II], Halpha, [O III]) palette. */
   setNebulaPalette(p: 'scientific' | 'enhanced'): void {
     this.nebulae.setPalette(p);
+  }
+
+  /** Filter the exoplanet host markers in 3D (e.g. to the planets known by a given year). */
+  setExoplanetHostFilter(keep: ((h: ExoHost) => boolean) | null): void {
+    this.exoplanets.setHostFilter(keep);
+  }
+
+  setHabitableZonesVisible(on: boolean): void {
+    this.exoplanets.setHabitableZoneVisible(on);
+  }
+
+  /**
+   * Stars for the Hertzsprung-Russell diagram: named stars and exoplanet hosts (real,
+   * de-reddened with the dust model) over a synthetic population of the neighbourhood.
+   */
+  async hrData(mode: 'volume' | 'visible'): Promise<HrData> {
+    const modeled = await this.pool.samplePopulation(mode, 4000, this.seed);
+    const real: HrStar[] = [];
+    for (const s of NAMED_STARS) {
+      const av = this.extinctionFromSun(raDecDistToGalactocentric(s.ra, s.dec, s.distPc)) ?? 0;
+      const p = starPhysics(s.vmag, s.distPc, s.bv, s.spectralType, av);
+      real.push({ id: s.id, name: s.name, teffK: p.teffK, absMagV: p.absMagV, stage: p.stage, source: 'named' });
+    }
+    const named = new Set(real.map((r) => r.id));
+    for (const h of this.exoplanets.catalog?.hosts ?? []) {
+      if (h.teffK === null || h.vmag === null || h.distPc === null) continue;
+      const id = this.exoplanets.targetIdOf(h.id);
+      if (named.has(id)) continue;
+      real.push({ id, name: h.name, teffK: h.teffK, absMagV: h.vmag - 5 * Math.log10(h.distPc / 10), stage: null, source: 'host' });
+    }
+    return { real, modeled };
   }
 
   /** Display brightness of nebulae (a long-exposure look; 1 = their true surface brightness). */
@@ -626,8 +715,9 @@ export class Engine {
     return this.sky.nextPass(noradId, this.jd);
   }
 
+  /** All targets, for search and lists (details without the derived and modeled extras). */
   getTargets(): TargetSummary[] {
-    return this.targets.map((t) => this.summary(t));
+    return this.targets.map((t) => ({ id: t.id, name: t.name, kind: t.kind, subtitle: t.subtitle, provenance: t.provenance, facts: t.facts, details: t.details }));
   }
 
   select(id: string | null): void {
@@ -661,8 +751,8 @@ export class Engine {
   }
 
   private summary(t: Target): TargetSummary {
-    const details = { ...t.details };
     const av = t.galPc && t.kind !== 'region' ? this.extinctionFromSun(t.galPc) : null;
+    const details = t.star ? { ...t.details, ...starPhysicsDetails(t.star, av) } : { ...t.details };
     if (av !== null) details['Extinction from Sun (model)'] = `A_V ≈ ${av < 10 ? av.toFixed(2) : av.toFixed(0)} mag`;
     return { id: t.id, name: t.name, kind: t.kind, subtitle: t.subtitle, provenance: t.provenance, facts: t.facts, details };
   }
@@ -671,6 +761,7 @@ export class Engine {
 
   private applyPixelSizes(): void {
     this.shared.uPixelRatio.value = this.renderer.getPixelRatio();
+    this.exoplanets?.setPixelRatio(this.renderer.getPixelRatio());
   }
 
   private resize = (): void => {
@@ -729,6 +820,8 @@ export class Engine {
     // Outside the Galaxy all light is unresolved and the auto exposure already brightens
     // it, so the extra diffuse gain (an inside-the-disc perception effect) eases off.
     this.shared.uDiffuseGain.value = 1 + (this.diffuseGain - 1) / Math.max(1, this.autoExposure);
+    this.exoplanets.jd = this.jd;
+    this.exoplanets.update(cam, this.selected?.id ?? null);
     this.nebulae.update(cam, camGal, this.shared.uPixelsPerRadian.value, this.renderer.getPixelRatio(), QUALITY[this.quality].nebulaSteps);
 
     this.updateLabels(cam);
@@ -816,7 +909,11 @@ export class Engine {
       l: lbd.l,
       b: lbd.b,
       dPc: lbd.d,
-      region: insideNebula ? `Inside the ${insideNebula.name}` : inCluster ? `${nearestTarget!.name} (globular cluster)` : regionName(kpc[0], kpc[1], kpc[2]),
+      region: this.exoplanets.activeSystem
+        ? `${this.exoplanets.activeSystem.name} planetary system`
+        : insideNebula
+          ? `Inside the ${insideNebula.name}`
+          : inCluster ? `${nearestTarget!.name} (globular cluster)` : regionName(kpc[0], kpc[1], kpc[2]),
       modeled: lbd.d > CATALOG_REACH_PC,
       nearest,
       targetName: this.selected?.name ?? null,
@@ -852,6 +949,7 @@ export class Engine {
     for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) layer.dispose();
     this.sky.dispose();
     this.nebulae.dispose();
+    this.exoplanets.dispose();
     this.glow?.dispose();
     this.catalog?.dispose();
     this.shared.uDustMap.value.dispose();

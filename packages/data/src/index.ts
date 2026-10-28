@@ -4,3 +4,5 @@ export * from './hipparcos';
 export * from './globularClusters';
 export * from './constellations';
 export * from './tle';
+export * from './exoplanets';
+export * from './compactObjects';

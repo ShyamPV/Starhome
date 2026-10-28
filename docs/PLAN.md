@@ -17,7 +17,7 @@ scope: `@starhome/*`.
 | 2 | Whole-galaxy model: LOD tiles, dust/extinction, globular clusters, Hipparcos/Gaia blending, inside/outside views | **Done**, except Gaia DR3 tiles (see below) |
 | 3 | Ephemerides worker (VSOP87/ELP), Sky view, constellations, SGP4 satellites, time controls, HUD | **Done** (see below) |
 | 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | **Done** (see below) |
-| 5 | Stars catalogue and HR diagram; exoplanet catalogue and 3D systems | |
+| 5 | Stars catalogue and HR diagram; exoplanet catalogue and 3D systems | **Done** (see below) |
 | 6 | Free travel polish, tours, Explore tab, shareable URLs | Warp-to and search done |
 | 7 | Polish, performance, PWA/offline, theming, README attributions | Themes done |
 
@@ -124,6 +124,37 @@ licensing decision), atmospheric extinction near the horizon, and light pollutio
   the blending hook (`realCatalogMagLimit`, extinction-aware) is ready for it.
 - *IndexedDB caching of generated layers* and *WebGPU culling* (deliverable 7, perf).
 
+### Deliverable 5: what landed
+
+- **Stars:** every named star's panel gains a temperature (from its spectral type on the
+  Pecaut & Mamajek scale, or B-V), luminosity, radius, a main-sequence mass and its life
+  stage, all corrected for the modeled extinction and marked "est.". Tested against the
+  Sun, Betelgeuse, Barnard's Star and Sirius B. Added four white dwarfs, three pulsars, a
+  magnetar and four stellar black holes (Cygnus X-1, V404 Cyg, Gaia BH1, Gaia BH3).
+- **HR diagram:** canvas scatter of the named stars and ~4,400 exoplanet hosts over a
+  synthetic background from the same population synthesis the 3D stars use, in two
+  modes: "naked-eye sky" (resampled by survey volume, so giants and hot stars dominate)
+  and "census" (M dwarfs dominate). Hover for details, click to fly there and select.
+  Series colours checked with the dataviz palette validator on the dark surface.
+- **Exoplanets:** the full NASA Exoplanet Archive composite table (6,451 planets) as a
+  snapshot built by `tools/build-exoplanets.mjs` (the archive does not allow browser
+  requests, so the app cannot refresh it live). Host stars are real points of light, with
+  optional ring markers. Every planet and host is searchable, with details and 2-5
+  facts (curated for famous systems, generated from the data otherwise). Habitable zones
+  (conservative and optimistic) and the ESI are computed and labelled as estimates.
+- **3D systems:** within ~10,000 AU of a host its system opens: the star, Keplerian
+  orbits from the real semi-major axis, eccentricity and period, animated with simulation
+  time, the habitable zone band, and planets with procedural surfaces (lava worlds,
+  temperate oceans, ice, deserts, banded giants, glowing hot Jupiters), marked "artist's
+  impression". Orbital phase and the line of nodes are not measured, so they are assumed.
+- **Fixed along the way:** labels could cover the UI panels (their z-index escaped the
+  label layer); a named star and its archive host entry were placed apart by catalogue
+  differences of hundreds of AU; catalogue stars now fade out within a few hundred AU so
+  a system's own star mesh shows instead of a blown-out point.
+
+**Not yet:** periodic refresh of the exoplanet snapshot (needs a server or CI job),
+binary-star orbits (Kepler-16's two suns are drawn as one), moons of exoplanets.
+
 ## Volumetric nebulae (deliverable 4)
 
 ### What landed
@@ -185,7 +216,7 @@ from a hand-built list of clouds rather than resampled Edenhofer/Lallement 3D ma
 | Source | Licence / terms | Risk |
 |--------|-----------------|------|
 | Hipparcos (ESA) / Gaia DR3 | Free use with acknowledgement (ESA/Gaia/DPAC) | Low: credit required |
-| NASA Exoplanet Archive | Public; acknowledgement requested | Low |
+| NASA Exoplanet Archive | Public; acknowledgement requested | Low: acknowledgement in README and the data file |
 | HYG database | CC BY-SA 4.0 | **Share-alike would apply to derived data.** Avoided: we build from Hipparcos directly |
 | Harris globular clusters (bundled) | Free of charge; anyone passing it on must cite the McMaster source and not charge for it | Low: cited in README and the data file |
 | Sharpless, NGC/IC, Messier | Academic catalogues, free with citation | Low |

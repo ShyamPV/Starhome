@@ -93,3 +93,21 @@ test('nebulae: search one, see where to find it, toggle the layer', async ({ pag
   await page.getByText('Nebulae', { exact: true }).click();
   await expect(toggle).not.toBeChecked();
 });
+
+test('explore: HR diagram and exoplanet catalogue', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Explore', exact: true }).click();
+  await expect(page.getByRole('img', { name: /Hertzsprung-Russell diagram/ })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Star catalogue' })).toContainText('Betelgeuse');
+  await page.getByRole('tab', { name: 'Exoplanets' }).click();
+  await expect(page.getByText(/known by \d{4}/)).toBeVisible({ timeout: 30_000 });
+  await page.getByLabel('In the habitable zone (conservative)').check();
+  await page.getByLabel('Maximum distance').selectOption({ label: 'Within 50 pc' });
+  await expect(page.getByRole('list', { name: 'Exoplanet list' })).toContainText('Proxima Cen b');
+  await page.getByRole('button', { name: 'TRAPPIST-1 e', exact: true }).click();
+  const panel = page.getByRole('complementary', { name: 'TRAPPIST-1 e details' });
+  await expect(panel).toContainText('Yes (conservative)');
+  await expect(panel).toContainText('artist’s impression');
+  await expect(page.getByLabel('Galactic position')).toContainText('TRAPPIST-1 planetary system', { timeout: 45_000 });
+});

@@ -1,4 +1,5 @@
 import type { GeoLocation } from '@starhome/astro';
+import type { ExoplanetCatalog } from '@starhome/data';
 import { DEFAULT_LOCATION, DEFAULT_SKY_LAYERS, type Engine, type Hud, type QualityPreset, type SkyLayers, type TargetSummary, type ViewMode } from '@starhome/engine';
 import { create } from 'zustand';
 
@@ -37,6 +38,11 @@ interface AppState {
   hud: Hud | null;
   targets: TargetSummary[];
   selected: TargetSummary | null;
+  /** NASA Exoplanet Archive snapshot, once loaded. */
+  exoplanets: ExoplanetCatalog | null;
+  exploreTab: 'stars' | 'exoplanets';
+  exoplanetMarkers: boolean;
+  habitableZones: boolean;
   nav: NavSection;
   navOpen: boolean;
   /** Flying through the Galaxy, or standing on the Earth looking up. */
@@ -67,12 +73,14 @@ interface AppState {
   setEngine: (e: Engine | null) => void;
   setHud: (h: Hud) => void;
   setSelected: (t: TargetSummary | null) => void;
+  setTargets: (t: TargetSummary[]) => void;
+  setExoplanets: (c: ExoplanetCatalog) => void;
   setNav: (n: NavSection) => void;
   toggleNav: () => void;
   setLocation: (loc: GeoLocation) => void;
   setSkyLayer: (layer: keyof SkyLayers, on: boolean) => void;
   set: (
-    patch: Partial<Pick<AppState, 'view' | 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'nebulae' | 'nebulaPalette' | 'nebulaBrightness' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>,
+    patch: Partial<Pick<AppState, 'view' | 'exploreTab' | 'exoplanetMarkers' | 'habitableZones' | 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'nebulae' | 'nebulaPalette' | 'nebulaBrightness' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>,
   ) => void;
 }
 
@@ -81,6 +89,10 @@ export const useApp = create<AppState>((set, get) => ({
   hud: null,
   targets: [],
   selected: null,
+  exoplanets: null,
+  exploreTab: 'stars',
+  exoplanetMarkers: false,
+  habitableZones: true,
   nav: 'galaxy',
   navOpen: true,
   view: 'galaxy',
@@ -106,6 +118,8 @@ export const useApp = create<AppState>((set, get) => ({
   setEngine: (engine) => set({ engine, targets: engine?.getTargets() ?? [] }),
   setHud: (hud) => set({ hud }),
   setSelected: (selected) => set({ selected }),
+  setTargets: (targets) => set({ targets }),
+  setExoplanets: (exoplanets) => set({ exoplanets }),
   setNav: (nav) => set((s) => ({ nav, navOpen: s.nav === nav ? !s.navOpen : true })),
   toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
   setLocation: (location) => {

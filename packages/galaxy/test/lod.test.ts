@@ -14,6 +14,9 @@ import {
   luminosityDensities,
   satelliteDensity,
   youngClumping,
+  componentDensities,
+  samplePopulation,
+  sampleVisible,
   type StarBuffers,
 } from '../src';
 
@@ -173,5 +176,28 @@ describe('globular cluster stars', () => {
 
   it('respect the star budget', () => {
     expect(generateClusterStars(req).stars.count).toBeLessThan(req.cap * 1.1);
+  });
+});
+
+describe('HR-diagram populations', () => {
+  const d = componentDensities(-R0_KPC, 0, 0.02, 0.5);
+  const density = { young: d.young, thin: d.thin, old: d.thick + d.halo };
+  const frac = (s: { teff: Float32Array; evolved: Uint8Array }, f: (t: number, e: number) => boolean) => {
+    let c = 0;
+    for (let i = 0; i < s.teff.length; i++) if (f(s.teff[i]!, s.evolved[i]!)) c++;
+    return c / s.teff.length;
+  };
+
+  it('is dominated by M dwarfs in a volume census (~75%, as in the 10 pc sample)', () => {
+    const vol = samplePopulation(4000, density, 1);
+    expect(frac(vol, (t) => t < 3900)).toBeGreaterThan(0.6);
+    expect(frac(vol, (_t, e) => e === 1)).toBeLessThan(0.02);
+  });
+
+  it('is dominated by luminous stars among those visible to the eye', () => {
+    const vis = sampleVisible(4000, density, 6.5, 1);
+    expect(frac(vis, (t) => t < 3900)).toBeLessThan(0.15);
+    expect(frac(vis, (_t, e) => e === 1)).toBeGreaterThan(0.1);
+    expect(frac(vis, (t) => t > 7500)).toBeGreaterThan(0.4);
   });
 });

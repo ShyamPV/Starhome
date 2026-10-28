@@ -4,7 +4,9 @@ import { generateCell } from './cells';
 import { generateClusterStars } from './clusters';
 import { buildDustMap } from './dust';
 import { generateGlow } from './glow';
+import { R0_KPC, componentDensities } from './model';
 import { generateNebula } from './nebulae';
+import { samplePopulation, sampleVisible } from './populations';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { generateTile } from './tiles';
 
@@ -36,6 +38,14 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       case 'cluster': {
         const buffers = generateClusterStars(msg.request);
         respond({ id: msg.id, type: 'cluster', buffers }, [...transferables(buffers.stars), ...transferables(buffers.haze)]);
+        break;
+      }
+      case 'hrSample': {
+        // Local densities at the Sun (arm strength of the Orion Spur), without clumping noise.
+        const d = componentDensities(-R0_KPC, 0, 0.02, 0.5);
+        const density = { young: d.young, thin: d.thin, old: d.thick + d.halo };
+        const buffers = msg.mode === 'visible' ? sampleVisible(msg.n, density, 6.5, msg.seed) : samplePopulation(msg.n, density, msg.seed);
+        respond({ id: msg.id, type: 'hrSample', buffers }, [buffers.teff.buffer, buffers.absMagV.buffer, buffers.evolved.buffer, buffers.pop.buffer]);
         break;
       }
       case 'nebula': {
