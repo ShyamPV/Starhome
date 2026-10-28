@@ -1,0 +1,63 @@
+Build a desktop web application (TypeScript, React + Vite, Three.js on WebGL2 with optional WebGPU, Zustand, Dexie/IndexedDB, Web Workers, Tailwind CSS) called "Milky Way Explorer". It is a scientifically grounded, fully explorable 3D model of our galaxy: every region rendered with stars, not only the Sun's neighbourhood. Users can fly anywhere in the Milky Way, visit stars, nebulae, and exoplanet systems, and see the sky from Earth in real time.
+
+## 1. Whole-galaxy star rendering (top priority)
+The Gaia catalog only covers our local region, so the galaxy must be a hybrid of real data and a physically based synthetic model:
+- **Real data near the Sun:** Hipparcos/Gaia stars (bundled bright set ~100k+, plus regional tiles streamed on demand from a spatial index) with accurate positions, parallax distances, magnitudes, and B-V/spectral-type colours.
+- **Synthetic galaxy everywhere else:** procedurally generate hundreds of millions of stars (rendered via GPU instancing/points with LOD and density-based impostors) from a model of the Milky Way:
+  - Barred spiral with 4 major arms (Perseus, Scutum-Centaurus, Sagittarius, Outer) plus the Orion Spur where the Sun sits, based on current survey data (Gaia, VLBI parallaxes of masers, e.g. BeSSeL).
+  - Central bar and boxy/peanut bulge, supermassive black hole Sagittarius A* at the centre, thin and thick disc with realistic scale heights, stellar halo, globular clusters (Harris catalog), and satellite galaxies (LMC, SMC, Sagittarius dwarf).
+  - Stellar population by region: young blue stars in the arms, old red/yellow stars in the bulge and halo, correct luminosity function and initial mass function.
+  - Dust lanes and extinction that darken the disc and the galactic centre as seen from inside.
+- Deterministic seeding, so the same place always shows the same stars, with real stars overriding synthetic ones wherever real data exists. Mark synthetic regions as "modeled" in the UI.
+- Seamless view change: from inside the galaxy (a night sky with the Milky Way band) to outside (full spiral disc seen from above or at an angle), with correct brightness, bloom, and tone mapping.
+- Handle scale: floating-origin camera-relative rendering, double-precision CPU coordinates, logarithmic depth, an octree of star tiles, and per-tile LOD, from planetary scale (km) to galactic scale (~100,000 ly). Target 60 fps on a mid-range GPU with Low/Medium/High/Ultra quality presets.
+
+## 2. 3D nebulae
+- Render nebulae as true volumetric 3D objects (raymarched density volumes or layered GPU particle/billboard volumes), not flat images, so they look correct from any angle and as the camera flies through them.
+- Cover emission, reflection, dark, planetary, and supernova-remnant nebulae and star-forming regions: Orion, Carina, Eagle (Pillars of Creation), Lagoon, Trifid, Rosette, Horsehead, Helix, Ring, Cat's Eye, Crab, Veil, Cygnus Loop, North America, Pelican, Pleiades reflection nebula, Coalsack, and more (Messier/NGC/IC/Sharpless catalogs).
+- Use real distances, sizes, and orientations where known; build density models from published structure and colour palettes from real emission lines (H-alpha red, OIII teal, SII, etc.). Embed the real member stars (e.g. Trapezium in Orion) inside each nebula.
+- Allow users to fly inside nebulae, with fog/glow, light scattering from embedded stars, and a toggle for scientific vs. enhanced colour.
+- Also render nearby 3D dust and molecular cloud structure (Local Bubble, Gould Belt) where public 3D maps exist.
+
+## 3. Stars catalog
+- Searchable catalog of notable and named stars (proper names, Bayer/Flamsteed, HD, HIP, Gaia IDs): Sun, Proxima Centauri, Sirius, Betelgeuse, Rigel, Vega, Polaris, Eta Carinae, VY Canis Majoris, UY Scuti, binaries, variable stars, pulsars, magnetars, white dwarfs, neutron stars, black holes, and Sagittarius A*.
+- Entry data: spectral class, temperature, mass, radius, luminosity, age, distance, magnitude, constellation, coordinates, companions, and life-stage/HR-diagram placement.
+- An interactive Hertzsprung-Russell diagram of the visible catalog; clicking a point highlights the star in 3D.
+
+## 4. Exoplanet catalog
+- Full NASA Exoplanet Archive (cached locally, refreshed periodically) with host stars placed in 3D at their true positions.
+- Filters: discovery method, year, size/type (rocky, super-Earth, Neptune-like, gas giant, hot Jupiter), habitable zone, distance, number of planets, and potential habitability score (e.g. Earth Similarity Index, computed and labelled as an estimate).
+- Each system rendered with real orbital parameters (semi-major axis, eccentricity, period), animated at adjustable time speed, a habitable zone shown as a toggleable band, and procedurally textured planets based on type and temperature (clearly marked "artist's impression").
+- Entry details: radius, mass, equilibrium temperature, orbital period, discovery date, facility, plus 2–5 interesting facts. Highlight famous systems (TRAPPIST-1, Kepler-452b, Proxima b, 55 Cancri e, HD 209458 b, Kepler-16b).
+- Discovery timeline slider showing how the catalog grew over time.
+
+## 5. Features carried over from the Universe Explorer
+- **Free travel:** orbit/pan/fly (WASD + mouse), "warp to" any object with smooth log-speed travel and a speed readout including multiples of c, arrival and orbit views, command palette (Ctrl/Cmd+K) search, "Surprise me", and shareable URLs encoding camera, time, and selection.
+- **Scale zoom:** continuous zoom from a planet's surface to the whole galaxy, with scale bar and distance in km, AU, ly, pc, kpc. The solar system sits at its real galactic position and is visible in context ("you are here" marker, with the Orion Spur, Local Bubble, and nearby stars).
+- **Real-time sky from Earth:** Sun, Moon, and planets from ephemerides (VSOP87/ELP or JPL-derived Chebyshev data) in a Web Worker; Sky view for the user's location and time with constellation lines/art, ISS and bright satellites (CelesTrak TLE + SGP4), rise/set times, altitude/azimuth, and RA/Dec. Time controls (now/pause/x1 to x1M, forward and reverse, date picker). Show where the galactic centre and the Milky Way band are in the sky right now.
+- **Explore tab (catalog hub):** unified searchable, filterable, virtualized list of stars, exoplanets, nebulae, clusters, black holes, pulsars, and solar system bodies, each with image, type, distance, size, discovery details, "Where to find it" (RA/Dec, visibility tonight, naked eye/binoculars/telescope), 2–5 curated facts (top ~200 hand-written; others data-generated), and source citation. "Go there" flies the 3D view to it. Favorites and visited tracking in IndexedDB. Curated lists ("Visible tonight", "Closest to Earth", "Most extreme") and a daily featured object.
+- **Solar system:** real textures, rings, tilt, rotation, and moons with real orbital elements.
+
+## 6. UI/UX
+- Universe-themed dark UI: near-black background, deep indigo/violet and teal accents, subtle glassmorphism panels, tasteful glow. Red night-vision mode and a high-contrast option; `prefers-reduced-motion` respected.
+- Layout: full-screen 3D canvas, collapsible left nav (Galaxy, Sky, Explore, Settings), right-hand object info panel, top search, bottom time controls.
+- Galactic position HUD: coordinates in galactic (l, b, d) and Galactocentric (x, y, z) systems, nearest named object, and current region (e.g. Orion Spur, Scutum-Centaurus Arm, Galactic Bulge).
+- Layer toggles: star classes, nebula types, dust, constellations, galactic grid, spiral arm labels, exoplanet hosts, black holes, globular clusters, and satellite galaxies.
+- Guided tours: "Journey to the galactic centre," "Tour of the great nebulae," "Closest exoplanets," and "Top 10 extreme stars."
+
+## 7. Architecture
+- Monorepo: `/apps/web` (React UI), `/packages/engine` (renderer, camera, LOD, shaders, volumetrics), `/packages/astro` (coordinate transforms incl. galactic/ICRS, units, ephemerides, SGP4; pure and fully tested), `/packages/galaxy` (galaxy model, procedural star generation, population synthesis), `/packages/data` (catalog loaders, caching), `/tools` (Python/Node scripts that preprocess Gaia, Hipparcos, NASA Exoplanet Archive, Sharpless/NGC/Messier, and Harris catalogs into compact binary tiles).
+- Offline-capable PWA with a service worker caching the core catalog and recently visited tiles.
+- Heavy work (tile decoding, procedural generation, ephemerides, density volume building) in Web Workers with transferable buffers.
+- Tests: Vitest for astro math (validate against known JPL/SIMBAD values) and galaxy-model statistics (star counts, arm positions); Playwright for core flows (search, warp, time travel, catalog filters).
+
+## 8. Deliverables and order
+1. Scaffold + renderer proof of concept: floating-origin camera, GPU star instancing, solar system.
+2. Whole-galaxy model: synthetic disc/bulge/halo/arms with real Gaia stars blended in near the Sun; inside and outside views.
+3. Ephemerides + Sky view + time controls + galactic coordinates HUD.
+4. Volumetric 3D nebulae and dust.
+5. Stars catalog + HR diagram, then Exoplanet catalog and 3D systems.
+6. Free travel, warp-to, tours, Explore tab, shareable URLs.
+7. Polish, perf tuning, PWA/offline, theming, and a README with data sources, licenses/attributions, and a clear note on what is real data vs. modeled.
+
+Before coding, give me a short plan, your proposed approach to rendering a hundred-million-star galaxy in the browser, how you will build the volumetric nebulae, and any data-licensing or performance risks.

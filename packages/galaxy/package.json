@@ -1,0 +1,13 @@
+{
+  "name": "@vialactea/galaxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Milky Way structural model, deterministic procedural star generation and population synthesis.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vialactea/astro": "workspace:*"
+  }
+}

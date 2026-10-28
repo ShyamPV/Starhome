@@ -1,0 +1,19 @@
+{
+  "name": "@vialactea/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Renderer: floating-origin camera, GPU star layers, solar system, post-processing.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vialactea/astro": "workspace:*",
+    "@vialactea/data": "workspace:*",
+    "@vialactea/galaxy": "workspace:*",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0"
+  }
+}

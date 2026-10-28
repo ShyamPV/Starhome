@@ -1,0 +1,25 @@
+{
+  "name": "via-lactea",
+  "private": true,
+  "type": "module",
+  "description": "Via Lactea: a scientifically grounded, fully explorable 3D model of the Milky Way.",
+  "scripts": {
+    "dev": "pnpm --filter @vialactea/web dev",
+    "build": "pnpm --filter @vialactea/web build",
+    "preview": "pnpm --filter @vialactea/web preview",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "data:hipparcos": "node tools/build-hipparcos.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

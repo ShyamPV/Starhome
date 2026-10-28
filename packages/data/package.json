@@ -1,0 +1,13 @@
+{
+  "name": "@vialactea/data",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Catalogue data, loaders and caching.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vialactea/astro": "workspace:*"
+  }
+}

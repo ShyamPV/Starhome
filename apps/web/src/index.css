@@ -1,0 +1,119 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-void: #05060d;
+  --color-panel: rgb(14 14 32 / 0.62);
+  --color-panel-strong: rgb(18 17 40 / 0.86);
+  --color-line: rgb(150 140 255 / 0.16);
+  --color-ink: #e8e6f5;
+  --color-ink-dim: #9d9ab8;
+  --color-ink-faint: #6b6889;
+  --color-violet: #8b7cff;
+  --color-violet-deep: #4b3fb8;
+  --color-teal: #3dd6c6;
+  --color-amber: #f2b95b;
+  --font-sans: 'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Glass panel */
+.glass {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.25),
+    0 12px 40px -12px rgb(0 0 0 / 0.7),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Labels rendered by the engine's CSS2DRenderer */
+.vl-label {
+  pointer-events: auto;
+  cursor: pointer;
+  font: 500 11px/1 var(--font-sans);
+  letter-spacing: 0.02em;
+  color: rgb(232 230 245 / 0.78);
+  background: none;
+  border: 0;
+  padding: 2px 4px 2px 12px;
+  position: relative;
+  white-space: nowrap;
+  text-shadow: 0 0 6px #000, 0 0 2px #000;
+}
+.vl-label::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.vl-label:hover,
+.vl-label.is-selected {
+  color: var(--color-teal);
+}
+.vl-label--planet,
+.vl-label--dwarf-planet,
+.vl-label--moon {
+  color: rgb(242 185 91 / 0.85);
+}
+.vl-label--galaxy,
+.vl-label--black-hole {
+  color: rgb(139 124 255 / 0.95);
+  font-weight: 600;
+}
+
+/* Themes */
+.theme-night #root {
+  filter: url(#vl-night-vision);
+}
+.theme-contrast {
+  --color-panel: rgb(0 0 0 / 0.92);
+  --color-panel-strong: #000;
+  --color-line: rgb(255 255 255 / 0.6);
+  --color-ink-dim: #e6e6e6;
+  --color-ink-faint: #c8c8c8;
+}
+.theme-contrast .vl-label {
+  color: #fff;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+input[type='range'] {
+  accent-color: var(--color-violet);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 2px;
+}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#05060d" />
+    <meta name="description" content="Via Lactea: fly anywhere in a scientifically grounded 3D model of the Milky Way." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Via Lactea</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <!-- Red night-vision mode: luminance -> red channel only. -->
+      <filter id="vl-night-vision">
+        <feColorMatrix type="matrix" values="0.45 0.45 0.2 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" />
+      </filter>
+    </svg>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

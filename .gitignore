@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.vite/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+
+# Raw catalogs downloaded by /tools (large; regenerate with the scripts)
+tools/raw/
+# Generated binary tiles are rebuilt from tools/
+apps/web/public/tiles/
+
+# Playwright
+test-results/
+playwright-report/
+
+.env
+.env.*
+!.env.example
