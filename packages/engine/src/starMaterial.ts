@@ -1,4 +1,4 @@
-import { KM_PER_PC } from '@vialactea/astro';
+import { KM_PER_PC } from '@starhome/astro';
 import { AdditiveBlending, ShaderMaterial } from 'three';
 
 /**

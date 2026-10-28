@@ -7,7 +7,7 @@
  * "up". Nothing absolute is ever uploaded to the GPU: every frame each object is placed
  * at (world - camera) and the camera sits at the origin (floating origin).
  */
-import { KM_PER_PC, eclipticToEquatorial, equatorialToGalactic, type Vec3 } from '@vialactea/astro';
+import { KM_PER_PC, eclipticToEquatorial, equatorialToGalactic, type Vec3 } from '@starhome/astro';
 import { Matrix4, Vector3 } from 'three';
 
 /** Galactocentric (or heliocentric Galactic) vector -> render-frame vector, same units. */

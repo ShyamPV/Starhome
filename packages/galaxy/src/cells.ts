@@ -4,7 +4,7 @@
  * the same stars. A per-cell star budget is met by keeping only the brightest stars
  * (raising the minimum mass), which keeps dense regions like the bulge tractable.
  */
-import { SUN_GALACTOCENTRIC_PC, type Vec3 } from '@vialactea/astro';
+import { SUN_GALACTOCENTRIC_PC, type Vec3 } from '@starhome/astro';
 import { StarBufferBuilder, type StarBuffers } from './buffers';
 import { armEnhancement, componentDensities } from './model';
 import {

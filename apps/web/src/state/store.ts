@@ -1,4 +1,4 @@
-import type { Engine, Hud, QualityPreset, TargetSummary } from '@vialactea/engine';
+import type { Engine, Hud, QualityPreset, TargetSummary } from '@starhome/engine';
 import { create } from 'zustand';
 
 export type NavSection = 'galaxy' | 'sky' | 'explore' | 'settings';

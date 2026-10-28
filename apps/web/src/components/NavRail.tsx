@@ -1,4 +1,4 @@
-import type { QualityPreset } from '@vialactea/engine';
+import type { QualityPreset } from '@starhome/engine';
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useApp, type NavSection, type Theme } from '../state/store';
@@ -123,7 +123,7 @@ export function NavRail() {
   return (
     <nav className="pointer-events-auto flex h-full gap-2" aria-label="Main">
       <div className="glass flex w-14 flex-col items-center gap-1 rounded-2xl py-3">
-        <div className="mb-3 grid size-9 place-items-center rounded-xl bg-gradient-to-br from-violet to-teal text-void" title="Via Lactea">
+        <div className="mb-3 grid size-9 place-items-center rounded-xl bg-gradient-to-br from-violet to-teal text-void" title="Starhome">
           <GalaxyIcon width={20} height={20} strokeWidth={2.2} />
         </div>
         {SECTIONS.map(({ id, label, Icon }) => (

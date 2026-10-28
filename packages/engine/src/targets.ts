@@ -1,6 +1,6 @@
-import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, absoluteMagnitude, bvToTeff, raDecDistToGalactocentric, spectralClassFromTeff } from '@vialactea/astro';
-import { NAMED_STARS, PLANETS, MOON, SUN } from '@vialactea/data';
-import { SATELLITES } from '@vialactea/galaxy';
+import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, absoluteMagnitude, bvToTeff, raDecDistToGalactocentric, spectralClassFromTeff } from '@starhome/astro';
+import { NAMED_STARS, PLANETS, MOON, SUN } from '@starhome/data';
+import { SATELLITES } from '@starhome/galaxy';
 import { Vector3 } from 'three';
 import { galPcToWorldKm } from './frames';
 import type { SolarSystem } from './solarSystem';

@@ -1,5 +1,5 @@
-import { KM_PER_PC, type Vec3 } from '@vialactea/astro';
-import { CELL_SIZE_PC, cellCenter, cellIndexOf, cellKey, type GalaxyWorkerPool, type StarBuffers } from '@vialactea/galaxy';
+import { KM_PER_PC, type Vec3 } from '@starhome/astro';
+import { CELL_SIZE_PC, cellCenter, cellIndexOf, cellKey, type GalaxyWorkerPool, type StarBuffers } from '@starhome/galaxy';
 import { BufferAttribute, BufferGeometry, Group, Points, Vector3, type ShaderMaterial } from 'three';
 import { GAL_PC_BASIS, galPcToWorldKm } from './frames';
 

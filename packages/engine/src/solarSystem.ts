@@ -8,8 +8,8 @@ import {
   sampleOrbit,
   sphericalToCartesian,
   type PlanetId,
-} from '@vialactea/astro';
-import { MOON, PLANETS, SUN, type BodyInfo } from '@vialactea/data';
+} from '@starhome/astro';
+import { MOON, PLANETS, SUN, type BodyInfo } from '@starhome/data';
 import {
   AmbientLight,
   BufferAttribute,

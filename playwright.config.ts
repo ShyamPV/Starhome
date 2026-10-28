@@ -12,7 +12,7 @@ export default defineConfig({
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] },
   },
   webServer: {
-    command: 'pnpm --filter @vialactea/web dev --port 5173 --strictPort',
+    command: 'pnpm --filter @starhome/web dev --port 5173 --strictPort',
     url: 'http://localhost:5173',
     reuseExistingServer: true,
   },

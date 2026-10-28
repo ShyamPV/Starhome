@@ -10,9 +10,9 @@ import {
   raDecDistToGalactocentric,
   teffToLinearRgb,
   type Vec3,
-} from '@vialactea/astro';
-import { HIPPARCOS_COMPLETE_TO_VMAG, NAMED_STARS, NAMED_STARS_COMPLETE_TO_VMAG, loadHipparcos } from '@vialactea/data';
-import { GalaxyWorkerPool, regionName } from '@vialactea/galaxy';
+} from '@starhome/astro';
+import { HIPPARCOS_COMPLETE_TO_VMAG, NAMED_STARS, NAMED_STARS_COMPLETE_TO_VMAG, loadHipparcos } from '@starhome/data';
+import { GalaxyWorkerPool, regionName } from '@starhome/galaxy';
 import {
   ACESFilmicToneMapping,
   Mesh,

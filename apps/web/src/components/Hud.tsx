@@ -1,4 +1,4 @@
-import { KM_PER_UNIT, bestDistanceUnit, formatDistance, formatSpeed } from '@vialactea/astro';
+import { KM_PER_UNIT, bestDistanceUnit, formatDistance, formatSpeed } from '@starhome/astro';
 import { useApp } from '../state/store';
 
 function Row({ k, v }: { k: string; v: string }) {

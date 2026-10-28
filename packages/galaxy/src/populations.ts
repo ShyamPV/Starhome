@@ -9,7 +9,7 @@ import {
   mainSequenceLuminosity,
   mainSequenceRadius,
   teffFromLR,
-} from '@vialactea/astro';
+} from '@starhome/astro';
 import type { Rng } from './rng';
 
 export type PopulationId = 'young' | 'thin' | 'old';

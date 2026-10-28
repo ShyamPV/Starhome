@@ -1,5 +1,5 @@
 {
-  "name": "@vialactea/web",
+  "name": "@starhome/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,10 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@vialactea/astro": "workspace:*",
-    "@vialactea/data": "workspace:*",
-    "@vialactea/engine": "workspace:*",
-    "@vialactea/galaxy": "workspace:*",
+    "@starhome/astro": "workspace:*",
+    "@starhome/data": "workspace:*",
+    "@starhome/engine": "workspace:*",
+    "@starhome/galaxy": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zustand": "^5.0.16"

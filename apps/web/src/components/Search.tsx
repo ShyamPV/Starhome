@@ -1,4 +1,4 @@
-import type { TargetSummary } from '@vialactea/engine';
+import type { TargetSummary } from '@starhome/engine';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state/store';
 import { SearchIcon } from './icons';

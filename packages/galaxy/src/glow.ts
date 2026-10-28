@@ -4,7 +4,7 @@
  * they form the Milky Way band. The renderer fades them out near the camera, where
  * individually generated stars (cells.ts) take over.
  */
-import { SUN_ABS_MAG_V, teffToLinearRgb, type Vec3 } from '@vialactea/astro';
+import { SUN_ABS_MAG_V, teffToLinearRgb, type Vec3 } from '@starhome/astro';
 import { StarBufferBuilder, type StarBuffers } from './buffers';
 import {
   BAR,

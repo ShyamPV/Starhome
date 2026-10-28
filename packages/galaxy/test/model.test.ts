@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SUN_GALACTOCENTRIC_PC } from '@vialactea/astro';
+import { SUN_GALACTOCENTRIC_PC } from '@starhome/astro';
 import {
   CELL_SIZE_PC,
   MASS_FUNCTIONS,

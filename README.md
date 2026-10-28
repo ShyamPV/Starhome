@@ -1,4 +1,4 @@
-# Via Lactea
+# Starhome
 
 A scientifically grounded, fully explorable 3D model of the Milky Way in the browser.
 You can fly from a planet's surface out to a view of the whole barred spiral, with

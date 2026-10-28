@@ -1,13 +1,13 @@
-# Via Lactea: plan, rendering approach and risks
+# Starhome: plan, rendering approach and risks
 
 The original brief lives in [`prompt.txt`](../prompt.txt). This document is the
 "before coding" plan it asks for, kept current as deliverables land.
 
 ## Name
 
-**Via Lactea** (Latin for "Milky Way"). It is short and works as a brand, and it says
-what the app covers: the whole Galaxy, not just the Sun's neighbourhood. Package
-scope: `@vialactea/*`.
+**Starhome** (renamed from the working title *Via Lactea*). The Milky Way is the
+Sun's home, and the app covers all of it, not just the Sun's neighbourhood. Package
+scope: `@starhome/*`.
 
 ## Plan by deliverable
 

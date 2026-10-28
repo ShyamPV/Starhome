@@ -23,16 +23,16 @@ importers:
 
   apps/web:
     dependencies:
-      '@vialactea/astro':
+      '@starhome/astro':
         specifier: workspace:*
         version: link:../../packages/astro
-      '@vialactea/data':
+      '@starhome/data':
         specifier: workspace:*
         version: link:../../packages/data
-      '@vialactea/engine':
+      '@starhome/engine':
         specifier: workspace:*
         version: link:../../packages/engine
-      '@vialactea/galaxy':
+      '@starhome/galaxy':
         specifier: workspace:*
         version: link:../../packages/galaxy
       react:
@@ -68,19 +68,19 @@ importers:
 
   packages/data:
     dependencies:
-      '@vialactea/astro':
+      '@starhome/astro':
         specifier: workspace:*
         version: link:../astro
 
   packages/engine:
     dependencies:
-      '@vialactea/astro':
+      '@starhome/astro':
         specifier: workspace:*
         version: link:../astro
-      '@vialactea/data':
+      '@starhome/data':
         specifier: workspace:*
         version: link:../data
-      '@vialactea/galaxy':
+      '@starhome/galaxy':
         specifier: workspace:*
         version: link:../galaxy
       three:
@@ -93,7 +93,7 @@ importers:
 
   packages/galaxy:
     dependencies:
-      '@vialactea/astro':
+      '@starhome/astro':
         specifier: workspace:*
         version: link:../astro
 

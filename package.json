@@ -1,12 +1,12 @@
 {
-  "name": "via-lactea",
+  "name": "starhome",
   "private": true,
   "type": "module",
-  "description": "Via Lactea: a scientifically grounded, fully explorable 3D model of the Milky Way.",
+  "description": "Starhome: a scientifically grounded, fully explorable 3D model of the Milky Way.",
   "scripts": {
-    "dev": "pnpm --filter @vialactea/web dev",
-    "build": "pnpm --filter @vialactea/web build",
-    "preview": "pnpm --filter @vialactea/web preview",
+    "dev": "pnpm --filter @starhome/web dev",
+    "build": "pnpm --filter @starhome/web build",
+    "preview": "pnpm --filter @starhome/web preview",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",

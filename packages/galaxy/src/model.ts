@@ -1,5 +1,5 @@
 /**
- * Structural model of the Milky Way in the Galactocentric frame (see @vialactea/astro
+ * Structural model of the Milky Way in the Galactocentric frame (see @starhome/astro
  * coords.ts): Sun at (-R0, 0, z0), +y along Galactic rotation at the Sun, +z to the NGP.
  * Lengths are kiloparsecs unless a name says otherwise; densities are stellar mass
  * densities in M_sun / pc^3.
@@ -8,7 +8,7 @@
  * parallaxes) near the Sun. Segments beyond the measured azimuth ranges, in particular
  * the far side of the Galaxy, are extrapolations and are flagged as modeled.
  */
-import { DEG, R0_PC, galacticToEquatorial, sphericalToCartesian, raDecDistToGalactocentric } from '@vialactea/astro';
+import { DEG, R0_PC, galacticToEquatorial, sphericalToCartesian, raDecDistToGalactocentric } from '@starhome/astro';
 
 export const R0_KPC = R0_PC / 1000;
 
