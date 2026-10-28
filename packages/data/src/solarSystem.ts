@@ -2,7 +2,7 @@
  * Physical data for Solar System bodies (NASA Planetary Fact Sheets; IAU WGCCRE 2015
  * pole orientations). Colours are display approximations until real textures are added.
  */
-import type { PlanetId } from '@vialactea/astro';
+import type { PlanetId } from '@starhome/astro';
 
 export interface BodyInfo {
   id: PlanetId | 'sun' | 'moon';

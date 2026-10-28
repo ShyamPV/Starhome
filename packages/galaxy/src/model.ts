@@ -1,5 +1,5 @@
 /**
- * Structural model of the Milky Way in the Galactocentric frame (see @vialactea/astro
+ * Structural model of the Milky Way in the Galactocentric frame (see @starhome/astro
  * coords.ts): Sun at (-R0, 0, z0), +y along Galactic rotation at the Sun, +z to the NGP.
  * Lengths are kiloparsecs unless a name says otherwise; densities are stellar mass
  * densities in M_sun / pc^3.
@@ -8,7 +8,9 @@
  * parallaxes) near the Sun. Segments beyond the measured azimuth ranges, in particular
  * the far side of the Galaxy, are extrapolations and are flagged as modeled.
  */
-import { DEG, R0_PC, galacticToEquatorial, sphericalToCartesian, raDecDistToGalactocentric } from '@vialactea/astro';
+import { DEG, R0_PC, galacticToEquatorial, sphericalToCartesian, raDecDistToGalactocentric } from '@starhome/astro';
+import { LIGHT_TO_MASS } from './populations';
+import { valueNoise } from './rng';
 
 export const R0_KPC = R0_PC / 1000;
 
@@ -202,6 +204,11 @@ export function barFrameToGalactocentric(u: number, v: number): [number, number]
 
 export const DISC = {
   thin: { rhoSun: 0.04, rd: 2.6, hz: 0.3 },
+  /**
+   * Density-wave amplitude of the old thin disc: density x (1 + c * arms). Spiral arms are
+   * clearly visible in near-infrared light from old stars, at roughly this contrast.
+   */
+  thinArmContrast: 0.4,
   young: { rhoSun: 0.0025, rd: 2.6, hz: 0.09 },
   thick: { rhoSun: 0.0045, rd: 2.0, hz: 0.9 },
   /** Thin-disc inner hole, kpc: the bar dominates inside this radius. */
@@ -218,11 +225,24 @@ function discHole(r: number): number {
 }
 
 export interface ComponentDensities {
+  /** Thin disc, plus the intermediate-age light of the Magellanic Clouds. */
   thin: number;
+  /** Young (< 100 Myr) disc population, plus the Clouds' young stars. */
   young: number;
   thick: number;
   bulge: number;
+  /** Stellar halo, plus the old Sagittarius dwarf. */
   halo: number;
+}
+
+/**
+ * Clumping of the young population into OB associations and star-forming complexes:
+ * a smooth, deterministic multiplier with mean ~1 on a ~120 pc lattice.
+ */
+export function youngClumping(x: number, y: number, z: number): number {
+  const v = 0.65 * valueNoise(x / 0.12, y / 0.12, z / 0.06) + 0.35 * valueNoise(x / 0.04 + 17.3, y / 0.04 - 4.1, z / 0.03);
+  // E[v^4] = 0.0912 for this blend, so the mean multiplier is 1.
+  return 0.2 + 8.77 * v ** 4;
 }
 
 /** Stellar mass densities (M_sun/pc^3) of each component at a Galactocentric point (kpc). */
@@ -230,8 +250,9 @@ export function componentDensities(x: number, y: number, z: number, armSum = arm
   const r = Math.hypot(x, y);
   const az = Math.abs(z);
   const radialThin = Math.exp(-(r - R0_KPC) / DISC.thin.rd) * discHole(r);
-  const thin = DISC.thin.rhoSun * radialThin * Math.exp(-az / DISC.thin.hz) * (1 + 0.15 * armSum);
-  const young = DISC.young.rhoSun * radialThin * Math.exp(-az / DISC.young.hz) * (0.25 + 2.5 * armSum);
+  let thin = DISC.thin.rhoSun * radialThin * Math.exp(-az / DISC.thin.hz) * (1 + DISC.thinArmContrast * armSum);
+  let young = DISC.young.rhoSun * radialThin * Math.exp(-az / DISC.young.hz) * (0.25 + 2.5 * armSum);
+  if (young > 1e-7) young *= youngClumping(x, y, z);
   const thick = DISC.thick.rhoSun * Math.exp(-(r - R0_KPC) / DISC.thick.rd) * Math.exp(-az / DISC.thick.hz);
 
   const [u, v] = barFrame(x, y);
@@ -240,12 +261,26 @@ export function componentDensities(x: number, y: number, z: number, armSum = arm
   const bulge = BAR.rho0 * Math.exp(-0.5 * rs2) + nuclear;
 
   const rq2 = r * r + (z / HALO.flattening) ** 2;
-  const halo = HALO.rhoSun * ((rq2 + HALO.core ** 2) / (R0_KPC ** 2 + HALO.core ** 2)) ** (-HALO.slope / 2);
+  let halo = HALO.rhoSun * ((rq2 + HALO.core ** 2) / (R0_KPC ** 2 + HALO.core ** 2)) ** (-HALO.slope / 2);
+
+  for (const s of SATELLITES) {
+    const rho = satelliteDensity(s, x, y, z);
+    if (rho === 0) continue;
+    thin += rho * s.mix.thin;
+    young += rho * s.mix.young;
+    halo += rho * s.mix.old;
+  }
 
   return { thin, young, thick, bulge, halo };
 }
 
 // --- Satellites ---------------------------------------------------------------------
+
+export type SatelliteShape =
+  /** Inclined exponential disc plus a Gaussian bar, in the satellite's own frame (kpc). */
+  | { kind: 'disc'; rd: number; hz: number; barFraction: number; bar: [number, number, number]; tiltDeg: number; spinDeg: number }
+  /** Triaxial Gaussian; `axis` is the unit vector of the long axis (sigma[2]). */
+  | { kind: 'gaussian'; sigma: [number, number, number]; axis: [number, number, number] };
 
 export interface Satellite {
   id: string;
@@ -256,6 +291,11 @@ export interface Satellite {
   radius: number;
   /** V-band luminosity, L_sun. */
   luminosity: number;
+  /** Stellar mass, M_sun. */
+  mass: number;
+  /** Mass fractions in the young / intermediate (thin-disc-like) / old populations. */
+  mix: { young: number; thin: number; old: number };
+  shape: SatelliteShape;
 }
 
 function lbdToGalactocentricKpc(l: number, b: number, dKpc: number): [number, number, number] {
@@ -266,12 +306,98 @@ function lbdToGalactocentricKpc(l: number, b: number, dKpc: number): [number, nu
   return [p[0] / 1000, p[1] / 1000, p[2] / 1000];
 }
 
+function unitFromSun(c: [number, number, number]): [number, number, number] {
+  const d: [number, number, number] = [c[0] + R0_KPC, c[1], c[2]];
+  const n = Math.hypot(...d);
+  return [d[0] / n, d[1] / n, d[2] / n];
+}
+
+const LMC_CENTER = lbdToGalactocentricKpc(280.47, -32.89, 49.6);
+const SMC_CENTER = lbdToGalactocentricKpc(302.8, -44.3, 62.4);
+const SGR_CENTER = lbdToGalactocentricKpc(5.6, -14.2, 26.5);
+
+/** Derive the stellar mass from the observed luminosity and the population mix, so the light matches. */
+function satellite(s: Omit<Satellite, 'mass'>): Satellite {
+  const lightToMass = s.mix.young * LIGHT_TO_MASS.young + s.mix.thin * LIGHT_TO_MASS.thin + s.mix.old * LIGHT_TO_MASS.old;
+  return { ...s, mass: s.luminosity / lightToMass };
+}
+
 export const SATELLITES: readonly Satellite[] = [
-  // Pietrzynski et al. 2019 (LMC distance), McConnachie 2012 (luminosities)
-  { id: 'lmc', name: 'Large Magellanic Cloud', center: lbdToGalactocentricKpc(280.47, -32.89, 49.6), radius: 4.5, luminosity: 1.5e9 },
-  { id: 'smc', name: 'Small Magellanic Cloud', center: lbdToGalactocentricKpc(302.8, -44.3, 62.4), radius: 2.5, luminosity: 4.6e8 },
-  { id: 'sgr-dsph', name: 'Sagittarius Dwarf Spheroidal', center: lbdToGalactocentricKpc(5.6, -14.2, 26.5), radius: 2.5, luminosity: 2.1e7 },
+  // Distances: Pietrzynski et al. 2019 (LMC), Graczyk et al. 2020 (SMC), ~26.5 kpc (Sgr).
+  // Luminosities: McConnachie 2012. Population mixes and shapes are simplified.
+  satellite({
+    id: 'lmc',
+    name: 'Large Magellanic Cloud',
+    center: LMC_CENTER,
+    radius: 4.5,
+    luminosity: 1.5e9,
+    mix: { young: 0.012, thin: 0.788, old: 0.2 },
+    shape: { kind: 'disc', rd: 1.4, hz: 0.25, barFraction: 0.2, bar: [1.4, 0.35, 0.25], tiltDeg: 35, spinDeg: 20 },
+  }),
+  satellite({
+    id: 'smc',
+    name: 'Small Magellanic Cloud',
+    center: SMC_CENTER,
+    radius: 2.5,
+    luminosity: 4.6e8,
+    mix: { young: 0.02, thin: 0.78, old: 0.2 },
+    // Elongated largely along our line of sight.
+    shape: { kind: 'gaussian', sigma: [0.9, 0.9, Math.hypot(0.9, 2.2)], axis: unitFromSun(SMC_CENTER) },
+  }),
+  satellite({
+    id: 'sgr-dsph',
+    name: 'Sagittarius Dwarf Spheroidal',
+    center: SGR_CENTER,
+    radius: 2.5,
+    luminosity: 2.1e7,
+    mix: { young: 0, thin: 0, old: 1 },
+    // Elongated perpendicular to the Galactic plane, along its polar orbit.
+    shape: { kind: 'gaussian', sigma: [0.6, 0.6, 2.2], axis: [0, 0, 1] },
+  }),
 ];
+
+/** Rotate a satellite-frame offset into the Galactocentric frame (disc satellites). */
+export function satelliteToGalactocentric(shape: Extract<SatelliteShape, { kind: 'disc' }>, d: [number, number, number]): [number, number, number] {
+  const t = shape.tiltDeg * DEG;
+  const p = shape.spinDeg * DEG;
+  const y1 = d[1] * Math.cos(t) - d[2] * Math.sin(t);
+  const z1 = d[1] * Math.sin(t) + d[2] * Math.cos(t);
+  return [d[0] * Math.cos(p) - y1 * Math.sin(p), d[0] * Math.sin(p) + y1 * Math.cos(p), z1];
+}
+
+function galactocentricToSatellite(shape: Extract<SatelliteShape, { kind: 'disc' }>, d: [number, number, number]): [number, number, number] {
+  const t = shape.tiltDeg * DEG;
+  const p = shape.spinDeg * DEG;
+  const x0 = d[0] * Math.cos(p) + d[1] * Math.sin(p);
+  const y1 = -d[0] * Math.sin(p) + d[1] * Math.cos(p);
+  return [x0, y1 * Math.cos(t) + d[2] * Math.sin(t), -y1 * Math.sin(t) + d[2] * Math.cos(t)];
+}
+
+const TWO_PI_3_2 = (2 * Math.PI) ** 1.5;
+
+/** Stellar mass density of a satellite galaxy, M_sun/pc^3, at a Galactocentric point (kpc). */
+export function satelliteDensity(s: Satellite, x: number, y: number, z: number): number {
+  const d: [number, number, number] = [x - s.center[0], y - s.center[1], z - s.center[2]];
+  const r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+  if (r2 > (3 * s.radius) ** 2) return 0;
+  let perKpc3: number;
+  if (s.shape.kind === 'disc') {
+    const sh = s.shape;
+    const [a, b, c] = galactocentricToSatellite(sh, d);
+    const disc = (1 - sh.barFraction) / (2 * Math.PI * sh.rd * sh.rd * 2 * sh.hz);
+    const rr = Math.hypot(a, b);
+    const bar = sh.barFraction / (TWO_PI_3_2 * sh.bar[0] * sh.bar[1] * sh.bar[2]);
+    perKpc3 =
+      disc * Math.exp(-rr / sh.rd - Math.abs(c) / sh.hz) +
+      bar * Math.exp(-0.5 * ((a / sh.bar[0]) ** 2 + (b / sh.bar[1]) ** 2 + (c / sh.bar[2]) ** 2));
+  } else {
+    const { sigma, axis } = s.shape;
+    const along = d[0] * axis[0] + d[1] * axis[1] + d[2] * axis[2];
+    const perp2 = Math.max(0, r2 - along * along);
+    perKpc3 = Math.exp(-0.5 * (perp2 / (sigma[0] * sigma[1]) + (along / sigma[2]) ** 2)) / (TWO_PI_3_2 * sigma[0] * sigma[1] * sigma[2]);
+  }
+  return (s.mass * perKpc3) / 1e9;
+}
 
 // --- Regions ----------------------------------------------------------------------
 

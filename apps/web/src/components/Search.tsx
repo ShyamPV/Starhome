@@ -1,4 +1,4 @@
-import type { TargetSummary } from '@vialactea/engine';
+import type { TargetSummary } from '@starhome/engine';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state/store';
 import { SearchIcon } from './icons';
@@ -9,6 +9,7 @@ const KIND_LABEL: Record<TargetSummary['kind'], string> = {
   'dwarf-planet': 'Dwarf planet',
   moon: 'Moon',
   'black-hole': 'Black hole',
+  cluster: 'Globular cluster',
   galaxy: 'Galaxy',
   region: 'Region',
 };

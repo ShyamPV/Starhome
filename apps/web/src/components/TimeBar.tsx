@@ -1,4 +1,4 @@
-import { dateToJulian, julianToDate } from '@vialactea/astro';
+import { dateToJulian, julianToDate } from '@starhome/astro';
 import { useEffect } from 'react';
 import { TIME_RATES, useApp } from '../state/store';
 import { FasterIcon, PauseIcon, PlayIcon, ReverseIcon, SlowerIcon } from './icons';

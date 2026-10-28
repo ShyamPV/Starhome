@@ -31,3 +31,27 @@ test('time controls change the simulation rate', async ({ page }) => {
   await page.getByRole('button', { name: 'Reverse time' }).click();
   await expect(page.getByText('−100×')).toBeVisible();
 });
+
+test('globular clusters are searchable and flying in names the region', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press('Control+K');
+  await page.keyboard.type('Omega Cen');
+  await expect(page.getByRole('option').first()).toContainText('Globular cluster');
+  await page.keyboard.press('Enter');
+  const panel = page.getByRole('complementary', { name: 'Omega Centauri details' });
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText('Harris catalogue');
+  await expect(panel).toContainText('Extinction from Sun (model)', { timeout: 20_000 });
+  await expect(page.getByLabel('Galactic position')).toContainText('Omega Centauri (globular cluster)', { timeout: 45_000 });
+});
+
+test('galaxy layers can be toggled', async ({ page }) => {
+  await page.goto('/');
+  for (const name of ['Dust and extinction', 'Globular clusters', 'Spiral arm labels']) {
+    const toggle = page.getByRole('checkbox', { name });
+    await expect(toggle).toBeChecked();
+    await page.getByText(name).click();
+    await expect(toggle).not.toBeChecked();
+  }
+});

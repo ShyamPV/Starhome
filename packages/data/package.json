@@ -1,5 +1,5 @@
 {
-  "name": "@vialactea/data",
+  "name": "@starhome/data",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vialactea/astro": "workspace:*"
+    "@starhome/astro": "workspace:*"
   }
 }

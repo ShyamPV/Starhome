@@ -1,20 +1,20 @@
-# Via Lactea: plan, rendering approach and risks
+# Starhome: plan, rendering approach and risks
 
 The original brief lives in [`prompt.txt`](../prompt.txt). This document is the
 "before coding" plan it asks for, kept current as deliverables land.
 
 ## Name
 
-**Via Lactea** (Latin for "Milky Way"). It is short and works as a brand, and it says
-what the app covers: the whole Galaxy, not just the Sun's neighbourhood. Package
-scope: `@vialactea/*`.
+**Starhome** (renamed from the working title *Via Lactea*). The Milky Way is the
+Sun's home, and the app covers all of it, not just the Sun's neighbourhood. Package
+scope: `@starhome/*`.
 
 ## Plan by deliverable
 
 | # | Deliverable | Status |
 |---|-------------|--------|
-| 1 | Scaffold, floating-origin camera, GPU star instancing, solar system | **Done (this commit)** |
-| 2 | Whole-galaxy model: octree tiles, dust/extinction, globular clusters, Hipparcos/Gaia blending, inside/outside views | Next |
+| 1 | Scaffold, floating-origin camera, GPU star instancing, solar system | **Done** |
+| 2 | Whole-galaxy model: LOD tiles, dust/extinction, globular clusters, Hipparcos/Gaia blending, inside/outside views | **Done**, except Gaia DR3 tiles (see below) |
 | 3 | Ephemerides worker (VSOP87/ELP), Sky view, constellations, SGP4 satellites, time controls, HUD | Time bar and HUD done |
 | 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | |
 | 5 | Stars catalogue and HR diagram; exoplanet catalogue and 3D systems | |
@@ -24,9 +24,9 @@ scope: `@vialactea/*`.
 ## Rendering a hundred-million-star galaxy in the browser
 
 No browser can hold 10^8 to 10^11 individual stars, so the trick is never to need more
-than a few million at once. Three layers share one point-sprite shader, which
-computes apparent brightness per frame from each star's **absolute magnitude** and
-its true distance to the camera:
+than a few million at once. All layers share one point-sprite shader, which
+computes apparent brightness per frame from each star's **absolute magnitude**, its
+true distance to the camera and the **dust extinction** along that line of sight:
 
 1. **Glow layer (aggregate particles).** About 0.3 to 3 M particles, each standing for
    about 10^4 stars, sampled from the Galaxy model's light distribution: young
@@ -56,11 +56,45 @@ relative to a *local* batch origin, so precision is set by batch size, not by di
 from the Galactic centre. A logarithmic depth buffer covers 1 m to 1 Mpc. Rendering
 goes through an HDR target, then bloom, then ACES tone mapping.
 
-**Next (deliverable 2).** Replace the uniform glow buffer with an **octree of tiles**:
-each node holds an importance-sampled impostor set sized to its screen footprint, with
-the cell generator as the leaf level. Add dust as a 3D density field sampled for
-per-star extinction and drawn as absorbing volumes. Move Hipparcos/Gaia into the same
-tiles (Gaia DR3 regional tiles streamed on demand), and add WebGPU compute for culling.
+### Deliverable 2: what landed
+
+**Level-of-detail shells instead of an octree.** Between the cells and the glow there are
+now two camera-centred grids of aggregate tiles (medium quality: 400 pc and 2 kpc tiles).
+Each tile samples the model's *luminosity density* on a sub-grid, so finer tiles carry
+fainter, denser particles. Neighbouring layers cross-fade over the same distance range
+(weights sum to one), and every layer draws its light from one light model
+(`light.ts`: mass densities × population light-to-mass ratios), so a region keeps its
+brightness as it moves between layers. Cells whose star budget leaves light out (the
+bulge) add soft "haze" particles for the expected missing light. A full octree would
+also serve views from far outside; the glow layer already does that well, so nested
+shells around the camera were simpler and seamless.
+
+**Dust.** A 2D map of mid-plane extinction (exponential disc, arm dust lanes on the arms'
+inner edges, molecular ring, bar lanes, Central Molecular Zone) times an exponential
+vertical profile, with the Local Bubble carved out. The vertex shader integrates
+extinction from the camera to every star with importance sampling in *z* (the vertical
+integral is analytic), so both steep rays from outside the disc and long in-plane rays
+resolve the thin dust layer with ~10 samples. Starlight is reddened per channel
+(Cardelli R_V = 3.1). Real catalogue magnitudes are de-reddened with the same model, so
+from the Sun the two cancel. Synthetic stars hidden by dust are no longer wrongly
+suppressed as "already in the catalogue".
+
+**Globular clusters.** All 157 Harris (2010) clusters: one soft particle each with the
+real integrated magnitude from afar; within ~700 pc, a resolved old population (blue
+horizontal branch for metal-poor clusters) on a Plummer profile with the real half-light
+radius, plus haze for the unresolved light.
+
+**Inside/outside.** An exposure meter sums the light reaching the camera from a fixed
+sample of glow particles (all directions, so it does not pump when the view turns) and
+brightens views from outside the Galaxy. A "Milky Way glow" gain brightens distant
+unresolved light, ramped in with distance so nearby layers are unaffected.
+
+**Deferred to later deliverables.**
+- *Gaia DR3 regional tiles:* needs an offline pipeline (Gaia archive queries, tiling,
+  hosting) that cannot be built or verified without network access to the archives;
+  the blending hook (`realCatalogMagLimit`, extinction-aware) is ready for it.
+- *IndexedDB caching of generated layers* and *WebGPU culling* (deliverable 7, perf).
+- *Dust as visible absorbing volumes* in front of nebulae (deliverable 4).
 
 ## Volumetric nebulae (deliverable 4)
 
@@ -89,7 +123,8 @@ tiles (Gaia DR3 regional tiles streamed on demand), and add WebGPU compute for c
 | Hipparcos (ESA) / Gaia DR3 | Free use with acknowledgement (ESA/Gaia/DPAC) | Low: credit required |
 | NASA Exoplanet Archive | Public; acknowledgement requested | Low |
 | HYG database | CC BY-SA 4.0 | **Share-alike would apply to derived data.** Avoided: we build from Hipparcos directly |
-| Harris globular clusters, Sharpless, NGC/IC, Messier | Academic catalogues, free with citation | Low |
+| Harris globular clusters (bundled) | Free of charge; anyone passing it on must cite the McMaster source and not charge for it | Low: cited in README and the data file |
+| Sharpless, NGC/IC, Messier | Academic catalogues, free with citation | Low |
 | CelesTrak TLEs | Free; rate limits apply | Medium: cache and throttle |
 | Planet textures (Solar System Scope) | CC BY 4.0 | Low: credit required |
 | NASA/ESA nebula imagery (for palette reference only) | Varies; ESA/Hubble is CC BY 4.0; some NASA images contain third-party content | Medium: we use published line ratios, not images |

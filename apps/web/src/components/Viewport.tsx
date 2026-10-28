@@ -1,4 +1,4 @@
-import { Engine } from '@vialactea/engine';
+import { Engine } from '@starhome/engine';
 import { useEffect, useRef } from 'react';
 import { useApp } from '../state/store';
 
@@ -19,7 +19,7 @@ export function Viewport() {
     });
     setEngine(engine);
     // Handle for end-to-end tests and console debugging in development.
-    if (import.meta.env.DEV) (window as unknown as { viaLactea: Engine }).viaLactea = engine;
+    if (import.meta.env.DEV) (window as unknown as { starhome: Engine }).starhome = engine;
     return () => {
       engine.dispose();
       setEngine(null);

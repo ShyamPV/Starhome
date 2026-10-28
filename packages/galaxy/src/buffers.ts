@@ -1,5 +1,5 @@
-import type { Vec3 } from '@vialactea/astro';
-import { teffToLinearRgb } from '@vialactea/astro';
+import type { Vec3 } from '@starhome/astro';
+import { teffToLinearRgb } from '@starhome/astro';
 
 /**
  * A batch of stars ready for the GPU. Positions are float32 parsecs *relative to

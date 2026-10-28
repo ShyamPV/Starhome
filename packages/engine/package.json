@@ -1,5 +1,5 @@
 {
-  "name": "@vialactea/engine",
+  "name": "@starhome/engine",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,9 +8,9 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vialactea/astro": "workspace:*",
-    "@vialactea/data": "workspace:*",
-    "@vialactea/galaxy": "workspace:*",
+    "@starhome/astro": "workspace:*",
+    "@starhome/data": "workspace:*",
+    "@starhome/galaxy": "workspace:*",
     "three": "^0.186.1"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
-import { KM_PER_PC, type Vec3 } from '@vialactea/astro';
-import { CELL_SIZE_PC, cellCenter, cellIndexOf, cellKey, type GalaxyWorkerPool, type StarBuffers } from '@vialactea/galaxy';
+import { KM_PER_PC, type Vec3 } from '@starhome/astro';
+import type { StarBuffers } from '@starhome/galaxy';
 import { BufferAttribute, BufferGeometry, Group, Points, Vector3, type ShaderMaterial } from 'three';
 import { GAL_PC_BASIS, galPcToWorldKm } from './frames';
 
@@ -50,30 +50,35 @@ export class StarBatch {
   }
 }
 
-export interface CellStreamerOptions {
+export interface GridLayerOptions {
+  /** Grid cell edge, pc. */
+  sizePc: number;
   /** Cells loaded in each direction around the camera cell. */
   reach: number;
-  /** Stars per cell nearest the camera; farther rings draw only their brightest subset. */
-  cap: number;
-  seed: number;
-  realCatalogMagLimit: number;
+  /** Generate one grid cell: one buffer per material slot (null or empty = nothing to draw). */
+  load: (ix: number, iy: number, iz: number) => Promise<(StarBuffers | null)[]>;
+  /**
+   * Level of detail for slot 0, whose buffers are sorted brightest-first: the fraction of
+   * stars drawn at each ring (Chebyshev distance in cells from the camera's cell).
+   */
+  ringFraction?: (ring: number) => number;
+  maxInFlight?: number;
 }
 
-interface CellEntry {
-  batch?: StarBatch;
-  loading: boolean;
+interface GridEntry {
+  batches: (StarBatch | null)[];
   ix: number;
   iy: number;
   iz: number;
 }
 
 /**
- * Streams procedurally generated star cells around the camera. Each cell is generated
- * once at full budget with stars sorted brightest-first; outer rings simply draw fewer.
+ * Streams procedurally generated grid cells (resolved-star cells or aggregate tiles)
+ * around the camera, nearest first, keeping one ring of hysteresis.
  */
-export class CellStreamer {
+export class GridStreamer {
   readonly group = new Group();
-  private readonly cells = new Map<string, CellEntry>();
+  private readonly entries = new Map<string, GridEntry>();
   private lastKey = '';
   private inFlight = 0;
   private queue: { ix: number; iy: number; iz: number; ring: number }[] = [];
@@ -81,19 +86,22 @@ export class CellStreamer {
   private disposed = false;
 
   constructor(
-    private readonly pool: GalaxyWorkerPool,
-    private readonly material: ShaderMaterial,
-    private opts: CellStreamerOptions,
+    private readonly materials: ShaderMaterial[],
+    private opts: GridLayerOptions,
   ) {}
 
-  /** Radius (km) out to which cells are always fully present. */
-  get coverageKm(): number {
-    return (this.opts.reach + 0.5) * CELL_SIZE_PC * KM_PER_PC;
+  get sizePc(): number {
+    return this.opts.sizePc;
+  }
+
+  /** Radius (km) out to which the grid is always fully loaded, wherever the camera is in its cell. */
+  get guaranteedKm(): number {
+    return this.opts.reach * this.opts.sizePc * KM_PER_PC;
   }
 
   get starCount(): number {
     let n = 0;
-    for (const c of this.cells.values()) if (c.batch) n += c.batch.count;
+    for (const e of this.entries.values()) for (const b of e.batches) if (b) n += b.count;
     return n;
   }
 
@@ -101,10 +109,10 @@ export class CellStreamer {
     return this.queue.length + this.inFlight;
   }
 
-  reset(opts: CellStreamerOptions): void {
+  reset(opts: GridLayerOptions): void {
     this.opts = opts;
-    for (const c of this.cells.values()) c.batch?.dispose();
-    this.cells.clear();
+    for (const e of this.entries.values()) for (const b of e.batches) b?.dispose();
+    this.entries.clear();
     this.group.clear();
     this.queue = [];
     this.lastKey = '';
@@ -114,38 +122,39 @@ export class CellStreamer {
     return Math.max(Math.abs(ix - this.center[0]), Math.abs(iy - this.center[1]), Math.abs(iz - this.center[2]));
   }
 
-  private drawCountForRing(ring: number, total: number): number {
-    const frac = ring <= 1 ? 1 : ring === 2 ? 0.35 : ring === 3 ? 0.15 : 0.08;
-    return Math.ceil(total * frac);
+  private applyLod(e: GridEntry): void {
+    const b = e.batches[0];
+    if (!b || !this.opts.ringFraction) return;
+    const total = b.points.geometry.getAttribute('position').count;
+    b.points.geometry.setDrawRange(0, Math.ceil(total * this.opts.ringFraction(this.ringOf(e.ix, e.iy, e.iz))));
   }
 
   update(cameraGalPc: Vec3, cameraKm: Vector3): void {
-    const idx = cellIndexOf(cameraGalPc);
-    const key = cellKey(...idx);
+    const s = this.opts.sizePc;
+    const idx: [number, number, number] = [Math.floor(cameraGalPc[0] / s), Math.floor(cameraGalPc[1] / s), Math.floor(cameraGalPc[2] / s)];
+    const key = idx.join(',');
     if (key !== this.lastKey) {
       this.lastKey = key;
       this.center = idx;
       this.retarget();
     }
     this.pump();
-    for (const c of this.cells.values()) c.batch?.rebase(cameraKm);
+    for (const e of this.entries.values()) for (const b of e.batches) b?.rebase(cameraKm);
   }
 
   private retarget(): void {
     const r = this.opts.reach;
     const [cx, cy, cz] = this.center;
-    // Drop cells beyond reach + 1 (one ring of hysteresis).
-    for (const [k, c] of this.cells) {
-      const ring = this.ringOf(c.ix, c.iy, c.iz);
-      if (ring > r + 1) {
-        if (c.batch) {
-          this.group.remove(c.batch.points);
-          c.batch.dispose();
+    for (const [k, e] of this.entries) {
+      if (this.ringOf(e.ix, e.iy, e.iz) > r + 1) {
+        for (const b of e.batches) {
+          if (!b) continue;
+          this.group.remove(b.points);
+          b.dispose();
         }
-        this.cells.delete(k);
-      } else if (c.batch) {
-        const total = c.batch.points.geometry.getAttribute('position').count;
-        c.batch.points.geometry.setDrawRange(0, this.drawCountForRing(ring, total));
+        this.entries.delete(k);
+      } else {
+        this.applyLod(e);
       }
     }
     this.queue = [];
@@ -155,41 +164,44 @@ export class CellStreamer {
           const ix = cx + i;
           const iy = cy + j;
           const iz = cz + k;
-          if (!this.cells.has(cellKey(ix, iy, iz))) this.queue.push({ ix, iy, iz, ring: Math.max(Math.abs(i), Math.abs(j), Math.abs(k)) });
+          if (!this.entries.has(`${ix},${iy},${iz}`)) this.queue.push({ ix, iy, iz, ring: Math.max(Math.abs(i), Math.abs(j), Math.abs(k)) });
         }
     this.queue.sort((a, b) => b.ring - a.ring); // pop() takes the nearest first
   }
 
   private pump(): void {
-    while (this.inFlight < 8 && this.queue.length) {
+    const max = this.opts.maxInFlight ?? 8;
+    while (this.inFlight < max && this.queue.length) {
       const q = this.queue.pop()!;
-      const key = cellKey(q.ix, q.iy, q.iz);
-      if (this.cells.has(key)) continue;
-      const entry: CellEntry = { loading: true, ix: q.ix, iy: q.iy, iz: q.iz };
-      this.cells.set(key, entry);
+      const key = `${q.ix},${q.iy},${q.iz}`;
+      if (this.entries.has(key)) continue;
+      const entry: GridEntry = { batches: [], ix: q.ix, iy: q.iy, iz: q.iz };
+      this.entries.set(key, entry);
       this.inFlight++;
-      this.pool
-        .generateCell({ ix: q.ix, iy: q.iy, iz: q.iz, cap: this.opts.cap, seed: this.opts.seed, realCatalogMagLimit: this.opts.realCatalogMagLimit })
-        .then((buf) => {
+      this.opts
+        .load(q.ix, q.iy, q.iz)
+        .then((bufs) => {
           this.inFlight--;
-          if (this.disposed || this.cells.get(key) !== entry) return;
-          entry.loading = false;
-          if (buf.count === 0) return;
-          entry.batch = new StarBatch(buf, cellCenter(q.ix, q.iy, q.iz), this.material);
-          entry.batch.points.geometry.setDrawRange(0, this.drawCountForRing(this.ringOf(q.ix, q.iy, q.iz), buf.count));
-          this.group.add(entry.batch.points);
+          if (this.disposed || this.entries.get(key) !== entry) return;
+          entry.batches = bufs.map((buf, slot) => {
+            if (!buf || buf.count === 0) return null;
+            const batch = new StarBatch(buf, buf.originPc, this.materials[slot]!);
+            this.group.add(batch.points);
+            return batch;
+          });
+          this.applyLod(entry);
         })
         .catch(() => {
           this.inFlight--;
-          this.cells.delete(key);
+          if (this.entries.get(key) === entry) this.entries.delete(key);
         });
     }
   }
 
   dispose(): void {
     this.disposed = true;
-    for (const c of this.cells.values()) c.batch?.dispose();
-    this.cells.clear();
+    for (const e of this.entries.values()) for (const b of e.batches) b?.dispose();
+    this.entries.clear();
   }
 }
 
