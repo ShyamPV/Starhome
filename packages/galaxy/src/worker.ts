@@ -1,25 +1,49 @@
 /// <reference lib="webworker" />
 import { transferables } from './buffers';
-import { generateCell, type CellRequest } from './cells';
-import { generateGlow, type GlowOptions } from './glow';
+import { generateCell } from './cells';
+import { generateClusterStars } from './clusters';
+import { buildDustMap } from './dust';
+import { generateGlow } from './glow';
 import type { WorkerRequest, WorkerResponse } from './protocol';
+import { generateTile } from './tiles';
 
 declare const self: DedicatedWorkerGlobalScope;
+
+function respond(res: WorkerResponse, transfer: Transferable[] = []): void {
+  self.postMessage(res, transfer);
+}
 
 self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
   const msg = ev.data;
   try {
-    if (msg.type === 'glow') {
-      const buffers = generateGlow(msg.options as GlowOptions);
-      const res: WorkerResponse = { id: msg.id, type: 'glow', buffers };
-      self.postMessage(res, transferables(buffers));
-    } else {
-      const buffers = generateCell(msg.request as CellRequest);
-      const res: WorkerResponse = { id: msg.id, type: 'cell', buffers };
-      self.postMessage(res, transferables(buffers));
+    switch (msg.type) {
+      case 'glow': {
+        const buffers = generateGlow(msg.options);
+        respond({ id: msg.id, type: 'glow', buffers }, transferables(buffers));
+        break;
+      }
+      case 'cell': {
+        const buffers = generateCell(msg.request);
+        respond({ id: msg.id, type: 'cell', buffers }, [...transferables(buffers), ...transferables(buffers.haze)]);
+        break;
+      }
+      case 'tile': {
+        const buffers = generateTile(msg.request);
+        respond({ id: msg.id, type: 'tile', buffers }, transferables(buffers));
+        break;
+      }
+      case 'cluster': {
+        const buffers = generateClusterStars(msg.request);
+        respond({ id: msg.id, type: 'cluster', buffers }, [...transferables(buffers.stars), ...transferables(buffers.haze)]);
+        break;
+      }
+      case 'dust': {
+        const buffers = buildDustMap();
+        respond({ id: msg.id, type: 'dust', buffers }, [buffers.data.buffer]);
+        break;
+      }
     }
   } catch (err) {
-    const res: WorkerResponse = { id: msg.id, type: 'error', message: String(err) };
-    self.postMessage(res);
+    respond({ id: msg.id, type: 'error', message: String(err) });
   }
 };

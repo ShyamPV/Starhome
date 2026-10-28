@@ -4,9 +4,9 @@ A scientifically grounded, fully explorable 3D model of the Milky Way in the bro
 You can fly from a planet's surface out to a view of the whole barred spiral, with
 stars rendered everywhere, not just around the Sun.
 
-> Status: **deliverable 1 of 7** (scaffold, floating-origin renderer, GPU star layers,
-> solar system). See [docs/PLAN.md](docs/PLAN.md) for the roadmap, the rendering
-> approach and the risks.
+> Status: **deliverable 2 of 7** (whole-galaxy model: level-of-detail shells, 3D dust and
+> extinction, globular clusters, inside/outside exposure). See [docs/PLAN.md](docs/PLAN.md)
+> for the roadmap, the rendering approach and the risks.
 
 ## Quick start
 
@@ -16,11 +16,13 @@ pnpm dev                 # http://localhost:5173
 pnpm test                # Vitest: astro math + galaxy-model statistics
 pnpm test:e2e            # Playwright smoke tests (uses local Edge by default)
 pnpm data:hipparcos      # optional: download Hipparcos (~118k real stars)
+pnpm data:globulars      # rebuild the bundled Harris globular-cluster table
 ```
 
 Controls: drag to orbit, right-drag to pan, use the wheel to zoom (logarithmic). Fly
 with W A S D, R/F for up/down, Shift for ×5. Ctrl/Cmd+K opens search. Double-click a
-label to travel there.
+label to travel there. The Galaxy panel toggles dust, globular clusters and spiral-arm
+labels; Settings has exposure and Milky Way glow (diffuse light) sliders.
 
 ## Repository layout
 
@@ -28,11 +30,14 @@ label to travel there.
 apps/web          React + Vite + Tailwind UI (Zustand state)
 packages/astro    Pure, tested astronomy math: units, time, ICRS/ecliptic/Galactic/
                   Galactocentric frames, Kepler orbits, Moon, photometry
-packages/galaxy   Galaxy model (arms, bar, discs, halo, satellites), seeded RNG,
-                  population synthesis, star generators, Web Worker pool
-packages/engine   three.js renderer: floating origin, star shader, cell streaming,
+packages/galaxy   Galaxy model (arms, bar, discs, halo, satellites), light model, 3D dust,
+                  seeded RNG, population synthesis, star/tile/cluster generators,
+                  Web Worker pool
+packages/engine   three.js renderer: floating origin, star shader with per-star
+                  extinction, level-of-detail shells, globular clusters, auto exposure,
                   camera rig, solar system, bloom + tone mapping, labels
-packages/data     Named-star seed catalogue, Solar System data, Hipparcos loader
+packages/data     Named-star seed catalogue, Solar System data, Hipparcos loader,
+                  Harris globular-cluster catalogue
 tools             Catalogue preprocessing scripts (Node)
 e2e               Playwright tests
 ```
@@ -47,13 +52,31 @@ e2e               Playwright tests
 | Hipparcos stars (after `pnpm data:hipparcos`) | ESA Hipparcos (I/239) + new reduction (I/311) | Real |
 | All other individual stars | Population synthesis from the Galaxy model | **Modeled** |
 | Diffuse light of the disc, bar, halo, Magellanic Clouds | Aggregate particles from the Galaxy model | **Modeled** |
+| Globular clusters (157): positions, distances, luminosities, sizes, metallicities | Harris 1996 (2010 edition) | Real |
+| Individual stars inside globular clusters | Synthesized from each cluster's real luminosity, size and [Fe/H] | **Modeled** |
+| Dust: extinction and reddening of every star, dust lanes, Great Rift | Smooth 3D model calibrated to observed extinction | **Modeled** (validated, see below) |
 | Spiral arm positions near the Sun | Reid et al. 2019 (BeSSeL maser parallaxes) | Real fit |
 | Spiral arms on the far side of the Galaxy | Extrapolated log spirals | **Modeled** |
 | Planet colours | Flat approximations | Artistic placeholder (textures in deliverable 7) |
 
 The HUD shows **Modeled** whenever you are beyond real catalogue coverage (300 pc from
 the Sun). The object panel labels each item as *Catalogue data*, *Ephemeris* or
-*Modeled*.
+*Modeled*, and shows the model's extinction from the Sun next to measured values where
+the catalogue has them.
+
+### How well the model matches the real Galaxy (checked in tests)
+
+- **Light:** total V luminosity 2.5 × 10¹⁰ L☉; local disc surface brightness ~23 L☉/pc²
+  (Flynn et al. 2006: 29). Seen from the Sun, the model sky is ~20 mag/arcsec² in the bulge
+  windows, ~21.5 along the plane and ~23.6 at the Galactic poles, close to measured values.
+- **Dust:** A_V ≈ 24 toward Sgr A*, ~2.6 through Baade's window (observed ~1.5–2), < 0.1 at
+  the poles, ~0.7 mag/kpc in the plane. Against the measured reddening of all 157 Harris
+  globular clusters it ranks sight lines correctly (Spearman ρ ≈ 0.88) and is typically
+  0.6–0.7× the measured value. It is smooth, so it misses individual clouds (ρ Ophiuchi in
+  front of M4, for example).
+- **Brightness on screen:** an automatic exposure brightens views from outside the Galaxy
+  (where less light reaches the camera). Unresolved light gets a separate "Milky Way glow"
+  gain, as planetarium software does: this is a display choice, not a physical change.
 
 ## Data sources and attributions
 
@@ -66,7 +89,14 @@ the Sun). The object panel labels each item as *Catalogue data*, *Ephemeris* or
 - Wegg & Gerhard 2013 (bar angle); Launhardt et al. 2002 (nuclear stellar disc);
   Kroupa 2001 (IMF); Flower 1996 / Torres 2010 (bolometric corrections); Ballesteros
   2012 (B−V to T_eff).
-- Pietrzyński et al. 2019 (LMC distance); McConnachie 2012 (satellite luminosities).
+- Pietrzyński et al. 2019 (LMC distance); Graczyk et al. 2020 (SMC distance); McConnachie
+  2012 (satellite luminosities).
+- Harris W. E. 1996, AJ 112, 1487 (2010 edition), *Catalog of Parameters for Milky Way
+  Globular Clusters*, https://physics.mcmaster.ca/~harris/mwgc.dat. Supplied free of
+  charge; redistributions must refer to this source.
+- Drimmel & Spergel 2001 (dust disc scale height); Lallement et al. 2014 (Local Bubble);
+  Cardelli, Clayton & Mathis 1989 (extinction law, R_V = 3.1); Flynn et al. 2006 (local
+  disc luminosity).
 - NASA Planetary Fact Sheets; IAU WGCCRE 2015 rotation elements.
 
 ## Licence

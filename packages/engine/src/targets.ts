@@ -1,11 +1,11 @@
-import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, absoluteMagnitude, bvToTeff, raDecDistToGalactocentric, spectralClassFromTeff } from '@starhome/astro';
-import { NAMED_STARS, PLANETS, MOON, SUN } from '@starhome/data';
-import { SATELLITES } from '@starhome/galaxy';
+import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, absoluteMagnitude, bvToTeff, raDecDistToGalactocentric, spectralClassFromTeff, type Vec3 } from '@starhome/astro';
+import { GLOBULAR_CLUSTERS, MOON, NAMED_STARS, PLANETS, SUN } from '@starhome/data';
+import { SATELLITES, SPIRAL_ARMS, armRadius, isModeledArmSegment, xyFromRBeta } from '@starhome/galaxy';
 import { Vector3 } from 'three';
 import { galPcToWorldKm } from './frames';
 import type { SolarSystem } from './solarSystem';
 
-export type TargetKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'black-hole' | 'galaxy' | 'region';
+export type TargetKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'black-hole' | 'cluster' | 'galaxy' | 'region';
 
 export interface Target {
   id: string;
@@ -27,6 +27,8 @@ export interface Target {
   details: Record<string, string>;
   /** Show a label only when the camera is closer than this, km. */
   labelRange: number;
+  /** Fixed Galactocentric position (pc) for objects outside the Solar System. */
+  galPc?: Vec3;
 }
 
 const SGR_A_STAR_RS_KM = 1.27e7; // Schwarzschild radius for 4.3e6 M_sun
@@ -68,7 +70,8 @@ export function buildTargets(ss: SolarSystem): Target[] {
   }
 
   for (const s of NAMED_STARS) {
-    const world = galPcToWorldKm(raDecDistToGalactocentric(s.ra, s.dec, s.distPc));
+    const galPc = raDecDistToGalactocentric(s.ra, s.dec, s.distPc);
+    const world = galPcToWorldKm(galPc);
     const teff = bvToTeff(s.bv);
     const absMag = absoluteMagnitude(s.vmag, s.distPc);
     const ly = (s.distPc * 3.26156).toFixed(s.distPc < 10 ? 2 : 0);
@@ -94,6 +97,81 @@ export function buildTargets(ss: SolarSystem): Target[] {
         Constellation: s.constellation,
       },
       labelRange: s.vmag < 1.5 ? 1500 * KM_PER_PC : 300 * KM_PER_PC,
+      galPc,
+    });
+  }
+
+  for (const c of GLOBULAR_CLUSTERS) {
+    const galPc = raDecDistToGalactocentric(c.ra, c.dec, c.distKpc * 1000);
+    const ly = Math.round(c.distKpc * 3261.56).toLocaleString('en-US');
+    const details: Record<string, string> = {
+      Designation: c.alt && c.name !== c.designation ? `${c.designation} · ${c.alt}` : c.designation,
+      Distance: `${c.distKpc} kpc (${ly} ly)`,
+      'Absolute mag (V)': c.absMagEstimated ? `≈ ${c.absMagV.toFixed(1)} (estimated)` : c.absMagV.toFixed(2),
+    };
+    if (c.vt != null) details['Apparent mag (V)'] = c.vt.toFixed(2);
+    if (c.feH != null) details['Metallicity [Fe/H]'] = c.feH.toFixed(2);
+    details['Half-light radius'] = c.rhArcmin != null ? `${c.rhPc.toFixed(1)} pc (${c.rhArcmin}′)` : 'unknown';
+    if (c.concentration != null) details['King concentration'] = `${c.concentration.toFixed(2)}${c.coreCollapsed ? ' (core-collapsed)' : ''}`;
+    if (c.ebv != null) details['E(B−V) measured'] = `${c.ebv.toFixed(2)} (A_V ≈ ${(3.1 * c.ebv).toFixed(1)})`;
+    details['RA / Dec'] = `${c.ra.toFixed(3)}°, ${c.dec.toFixed(3)}°`;
+    details['Galactic l, b'] = `${c.l.toFixed(2)}°, ${c.b.toFixed(2)}°`;
+    // Famous clusters are labelled across the Galaxy, bright ones nearby, the rest only up close.
+    const labelKpc = c.facts.length > 0 ? 25 : c.absMagV < -8.5 ? 6 : 0.8;
+    targets.push({
+      id: c.id,
+      name: c.name,
+      kind: 'cluster',
+      subtitle: c.name === c.designation ? 'Globular cluster' : `Globular cluster · ${c.designation}`,
+      position: fixed(galPcToWorldKm(galPc)),
+      radiusKm: c.rhPc * KM_PER_PC,
+      viewDistanceKm: Math.max(15, c.rhPc * 6) * KM_PER_PC,
+      provenance: 'catalog',
+      facts: [
+        ...c.facts,
+        'Position, distance, brightness and size are from the Harris catalogue; the individual stars drawn up close are modeled from them.',
+      ],
+      details,
+      labelRange: labelKpc * KM_PER_KPC,
+      galPc,
+    });
+  }
+
+  // Spiral-arm labels at a representative point on each arm (Reid et al. 2019 fits).
+  const armLabels: { armId: string; name: string; beta: number }[] = [
+    { armId: 'perseus', name: 'Perseus Arm', beta: 40 },
+    { armId: 'sagittarius-carina', name: 'Sagittarius-Carina Arm', beta: 24 },
+    { armId: 'scutum-centaurus', name: 'Scutum-Centaurus Arm', beta: 23 },
+    { armId: 'norma-outer', name: 'Norma Arm', beta: 18 },
+    { armId: 'norma-outer', name: 'Outer Arm', beta: 18 - 360 },
+    { armId: 'local', name: 'Orion Spur (Local Arm)', beta: 9 },
+  ];
+  for (const a of armLabels) {
+    const arm = SPIRAL_ARMS.find((s) => s.id === a.armId)!;
+    const r = armRadius(arm, a.beta);
+    const [x, y] = xyFromRBeta(r, a.beta);
+    const galPc: Vec3 = [x * 1000, y * 1000, 0];
+    targets.push({
+      id: `arm-${a.name.toLowerCase().replace(/[^a-z]+/g, '-').replace(/-$/, '')}`,
+      name: a.name,
+      kind: 'region',
+      subtitle: 'Spiral arm',
+      position: fixed(galPcToWorldKm(galPc)),
+      radiusKm: 1.2 * KM_PER_KPC,
+      viewDistanceKm: 7 * KM_PER_KPC,
+      pitch: 1.0,
+      provenance: 'model',
+      facts: [
+        `Log-spiral fit to maser parallaxes (Reid et al. 2019), measured between Galactocentric azimuths ${arm.measured[0]}° and ${arm.measured[1]}°.`,
+        isModeledArmSegment(arm, a.beta) ? 'This part of the arm lies outside the measured range and is extrapolated.' : 'Beyond the measured range the arm is extrapolated and marked as modeled.',
+      ],
+      details: {
+        'Radius here': `${r.toFixed(2)} kpc from the centre`,
+        'Pitch angle': arm.pitchBelow === arm.pitchAbove ? `${arm.pitchBelow}°` : `${arm.pitchBelow}° / ${arm.pitchAbove}° (kink at ${arm.betaKink}°)`,
+        Width: `${Math.round(arm.width * 1000)} pc`,
+      },
+      labelRange: 200 * KM_PER_KPC,
+      galPc,
     });
   }
 

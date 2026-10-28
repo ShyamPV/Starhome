@@ -18,6 +18,7 @@ const DESTINATIONS: { id: string; label: string; hint: string }[] = [
   { id: 'betelgeuse', label: 'Betelgeuse', hint: 'Red supergiant in Orion' },
   { id: 'milky-way', label: 'The whole Galaxy', hint: 'Seen from above the disc' },
   { id: 'sgr-a-star', label: 'Galactic centre', hint: 'Sagittarius A*' },
+  { id: 'ngc-5139', label: 'Omega Centauri', hint: 'Largest globular cluster, 5.2 kpc' },
   { id: 'lmc', label: 'Large Magellanic Cloud', hint: 'Satellite galaxy, 50 kpc' },
 ];
 
@@ -36,7 +37,7 @@ function Heading({ children }: { children: ReactNode }) {
 }
 
 function GalaxyPanel() {
-  const { engine, orbits, labels, set } = useApp();
+  const { engine, orbits, labels, dust, clusters, arms, set } = useApp();
   return (
     <>
       <Heading>Go to</Heading>
@@ -53,6 +54,9 @@ function GalaxyPanel() {
       <Heading>Layers</Heading>
       <Toggle label="Orbits" checked={orbits} onChange={(v) => set({ orbits: v })} />
       <Toggle label="Labels" checked={labels} onChange={(v) => set({ labels: v })} />
+      <Toggle label="Dust and extinction" checked={dust} onChange={(v) => set({ dust: v })} />
+      <Toggle label="Globular clusters" checked={clusters} onChange={(v) => set({ clusters: v })} />
+      <Toggle label="Spiral arm labels" checked={arms} onChange={(v) => set({ arms: v })} />
       <Heading>Controls</Heading>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] text-ink-dim">
         <dt className="font-mono text-ink">Drag</dt>
@@ -85,7 +89,7 @@ function ComingSoon({ title, deliverable, items }: { title: string; deliverable:
 }
 
 function SettingsPanel() {
-  const { quality, exposure, bloom, theme, set } = useApp();
+  const { quality, exposure, glow, bloom, theme, set } = useApp();
   const presets: QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
   const themes: { id: Theme; label: string }[] = [
     { id: 'default', label: 'Default' },
@@ -103,7 +107,9 @@ function SettingsPanel() {
         ))}
       </div>
       <Heading>Exposure</Heading>
-      <input type="range" min={1} max={40} step={0.5} value={exposure} onChange={(e) => set({ exposure: Number(e.target.value) })} className="w-full" aria-label="Exposure" />
+      <input type="range" min={1} max={80} step={0.5} value={exposure} onChange={(e) => set({ exposure: Number(e.target.value) })} className="w-full" aria-label="Exposure" />
+      <Heading>Milky Way glow</Heading>
+      <input type="range" min={1} max={12} step={0.5} value={glow} onChange={(e) => set({ glow: Number(e.target.value) })} className="w-full" aria-label="Milky Way glow" />
       <Toggle label="Bloom" checked={bloom} onChange={(v) => set({ bloom: v })} />
       <Heading>Theme</Heading>
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
@@ -168,12 +174,16 @@ export function NavRail() {
 
 /** Pushes settings from the store into the engine and the document theme. */
 export function useEngineSettings() {
-  const { engine, quality, exposure, bloom, orbits, labels, theme } = useApp();
+  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, theme } = useApp();
   useEffect(() => engine?.setQuality(quality), [engine, quality]);
   useEffect(() => engine?.setExposure(exposure), [engine, exposure]);
+  useEffect(() => engine?.setDiffuseGain(glow), [engine, glow]);
   useEffect(() => engine?.setBloom(bloom), [engine, bloom]);
   useEffect(() => engine?.setOrbitsVisible(orbits), [engine, orbits]);
   useEffect(() => engine?.setLabelsVisible(labels), [engine, labels]);
+  useEffect(() => engine?.setLayerVisible('dust', dust), [engine, dust]);
+  useEffect(() => engine?.setLayerVisible('clusters', clusters), [engine, clusters]);
+  useEffect(() => engine?.setLayerVisible('arms', arms), [engine, arms]);
   useEffect(() => {
     document.documentElement.classList.remove('theme-night', 'theme-contrast');
     if (theme !== 'default') document.documentElement.classList.add(`theme-${theme}`);

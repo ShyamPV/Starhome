@@ -16,9 +16,15 @@ interface AppState {
   navOpen: boolean;
   quality: QualityPreset;
   exposure: number;
+  /** Brightness of the unresolved Milky Way glow relative to resolved stars. */
+  glow: number;
   bloom: boolean;
   orbits: boolean;
   labels: boolean;
+  /** Interstellar dust: extinction and reddening of starlight. */
+  dust: boolean;
+  clusters: boolean;
+  arms: boolean;
   theme: Theme;
   rateIndex: number;
   reverse: boolean;
@@ -29,7 +35,7 @@ interface AppState {
   setSelected: (t: TargetSummary | null) => void;
   setNav: (n: NavSection) => void;
   toggleNav: () => void;
-  set: (patch: Partial<Pick<AppState, 'quality' | 'exposure' | 'bloom' | 'orbits' | 'labels' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>) => void;
+  set: (patch: Partial<Pick<AppState, 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -40,10 +46,14 @@ export const useApp = create<AppState>((set) => ({
   nav: 'galaxy',
   navOpen: true,
   quality: 'medium',
-  exposure: 8,
+  exposure: 20,
+  glow: 4,
   bloom: true,
   orbits: true,
   labels: true,
+  dust: true,
+  clusters: true,
+  arms: true,
   theme: 'default',
   rateIndex: 0,
   reverse: false,

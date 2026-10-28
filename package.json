@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "data:hipparcos": "node tools/build-hipparcos.mjs"
+    "data:hipparcos": "node tools/build-hipparcos.mjs",
+    "data:globulars": "node tools/build-globulars.mjs"
   },
   "engines": {
     "node": ">=20"

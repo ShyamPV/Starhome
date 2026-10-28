@@ -9,6 +9,7 @@ const KIND_LABEL: Record<TargetSummary['kind'], string> = {
   'dwarf-planet': 'Dwarf planet',
   moon: 'Moon',
   'black-hole': 'Black hole',
+  cluster: 'Globular cluster',
   galaxy: 'Galaxy',
   region: 'Region',
 };

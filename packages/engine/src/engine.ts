@@ -1,6 +1,6 @@
 import {
   KM_PER_AU,
-  KM_PER_KPC,
+  KM_PER_PC,
   SUN_ABS_MAG_V,
   SUN_GALACTOCENTRIC_PC,
   absoluteMagnitude,
@@ -12,18 +12,22 @@ import {
   type Vec3,
 } from '@starhome/astro';
 import { HIPPARCOS_COMPLETE_TO_VMAG, NAMED_STARS, NAMED_STARS_COMPLETE_TO_VMAG, loadHipparcos } from '@starhome/data';
-import { GalaxyWorkerPool, regionName } from '@starhome/galaxy';
+import { CELL_SIZE_PC, DUST, GalaxyWorkerPool, extinctionV, regionName, type DustMap } from '@starhome/galaxy';
 import {
   ACESFilmicToneMapping,
+  DataTexture,
+  DataUtils,
+  HalfFloatType,
+  LinearFilter,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
+  RedFormat,
   Scene,
   SphereGeometry,
   Vector2,
   Vector3,
   WebGLRenderer,
-  type ShaderMaterial,
 } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -31,19 +35,87 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CameraRig } from './cameraRig';
+import { CLUSTER_FADE_KM, GlobularClusterLayer } from './clusterLayer';
+import { ExposureMeter } from './exposure';
 import { worldKmToGalPc } from './frames';
 import { SolarSystem } from './solarSystem';
-import { createStarMaterial } from './starMaterial';
-import { CellStreamer, StarBatch, starBatchFromBuffers } from './starLayers';
-import { buildTargets, type Target } from './targets';
+import { createSharedStarUniforms, createStarMaterial, setFades } from './starMaterial';
+import { GridStreamer, StarBatch, starBatchFromBuffers, type GridLayerOptions } from './starLayers';
+import { buildTargets, type Target, type TargetKind } from './targets';
 
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra';
 
-export const QUALITY: Record<QualityPreset, { glow: number; cellCap: number; reach: number; bloom: boolean; maxPixelRatio: number }> = {
-  low: { glow: 300_000, cellCap: 1200, reach: 2, bloom: false, maxPixelRatio: 1 },
-  medium: { glow: 800_000, cellCap: 2500, reach: 3, bloom: true, maxPixelRatio: 1.5 },
-  high: { glow: 1_600_000, cellCap: 4000, reach: 3, bloom: true, maxPixelRatio: 2 },
-  ultra: { glow: 3_000_000, cellCap: 8000, reach: 4, bloom: true, maxPixelRatio: 2 },
+interface TileLevel {
+  /** Tile edge, pc. */
+  sizePc: number;
+  /** Target luminosity per particle, L_sun. */
+  particleLum: number;
+  /** Maximum particles per tile. */
+  cap: number;
+}
+
+export interface QualitySettings {
+  /** Galaxy-wide aggregate particles. */
+  glow: number;
+  /** Resolved stars per 50 pc cell nearest the camera, and cells loaded in each direction. */
+  cellCap: number;
+  cellReach: number;
+  /** Level-of-detail tiles between the cells and the glow. */
+  near: TileLevel;
+  far: TileLevel;
+  /** Resolved stars per globular cluster up close. */
+  clusterCap: number;
+  /** Samples per star along the line of sight through the dust. */
+  dustSteps: number;
+  bloom: boolean;
+  maxPixelRatio: number;
+}
+
+export const QUALITY: Record<QualityPreset, QualitySettings> = {
+  low: {
+    glow: 300_000,
+    cellCap: 1200,
+    cellReach: 2,
+    near: { sizePc: 500, particleLum: 600, cap: 8_000 },
+    far: { sizePc: 2500, particleLum: 6000, cap: 20_000 },
+    clusterCap: 8_000,
+    dustSteps: 6,
+    bloom: false,
+    maxPixelRatio: 1,
+  },
+  medium: {
+    glow: 800_000,
+    cellCap: 2500,
+    cellReach: 3,
+    near: { sizePc: 400, particleLum: 300, cap: 12_000 },
+    far: { sizePc: 2000, particleLum: 3000, cap: 30_000 },
+    clusterCap: 20_000,
+    dustSteps: 10,
+    bloom: true,
+    maxPixelRatio: 1.5,
+  },
+  high: {
+    glow: 1_600_000,
+    cellCap: 4000,
+    cellReach: 3,
+    near: { sizePc: 400, particleLum: 150, cap: 20_000 },
+    far: { sizePc: 2000, particleLum: 1500, cap: 50_000 },
+    clusterCap: 40_000,
+    dustSteps: 14,
+    bloom: true,
+    maxPixelRatio: 2,
+  },
+  ultra: {
+    glow: 3_000_000,
+    cellCap: 8000,
+    cellReach: 4,
+    near: { sizePc: 500, particleLum: 80, cap: 32_000 },
+    far: { sizePc: 2500, particleLum: 800, cap: 80_000 },
+    clusterCap: 80_000,
+    dustSteps: 20,
+    bloom: true,
+    maxPixelRatio: 2,
+  },
 };
 
 export interface Hud {
@@ -65,7 +137,9 @@ export interface Hud {
   speedKmS: number;
   kmPerPixel: number;
   fps: number;
-  stars: { glow: number; cells: number; catalog: number; catalogSource: 'hipparcos' | 'named' | 'loading' };
+  /** Current exposure multiplier from the automatic inside/outside adaptation. */
+  autoExposure: number;
+  stars: { glow: number; tiles: number; cells: number; catalog: number; catalogSource: 'hipparcos' | 'named' | 'loading' };
   loading: string[];
 }
 
@@ -79,6 +153,8 @@ export interface TargetSummary {
   details: Record<string, string>;
 }
 
+export type LayerId = 'dust' | 'clusters' | 'arms';
+
 export interface EngineOptions {
   canvas: HTMLCanvasElement;
   labelRoot: HTMLElement;
@@ -91,6 +167,9 @@ export interface EngineOptions {
 
 /** Real catalogue coverage: beyond this distance from the Sun the scene is mostly modeled. */
 const CATALOG_REACH_PC = 300;
+const ARM_LABEL_MIN_ZOOM_KM = 4 * KM_PER_PC * 1000;
+/** Level-of-detail cross-fades run over this fraction of each layer's guaranteed radius. */
+const FADE_FRACTION: [number, number] = [0.55, 0.95];
 
 export class Engine {
   private readonly renderer: WebGLRenderer;
@@ -102,24 +181,42 @@ export class Engine {
   readonly rig: CameraRig;
   private readonly solar = new SolarSystem();
   private readonly pool = new GalaxyWorkerPool();
-  private readonly glowMaterial = createStarMaterial({ soft: true, smoothingPc: 25 });
-  private readonly cellMaterial = createStarMaterial();
-  private readonly catalogMaterial = createStarMaterial();
+  private readonly shared = createSharedStarUniforms();
+  // Level-of-detail shells, nearest first: cells -> near tiles -> far tiles -> glow.
+  private readonly cellMaterial = createStarMaterial(this.shared);
+  private readonly cellHazeMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 4 });
+  private readonly nearMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 1.5 });
+  private readonly farMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 5 });
+  private readonly glowMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 12 });
+  private readonly catalogMaterial = createStarMaterial(this.shared);
   /** The Sun as a point of light, faded in only once we are well outside the planetary system. */
-  private readonly sunMaterial = createStarMaterial({ fadeIn: [300 * KM_PER_AU, 20_000 * KM_PER_AU] });
+  private readonly sunMaterial = createStarMaterial(this.shared, { fadeIn: [300 * KM_PER_AU, 20_000 * KM_PER_AU] });
+  private readonly clusterAggregateMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 4, fadeOut: CLUSTER_FADE_KM });
+  private readonly clusterStarMaterial = createStarMaterial(this.shared, { fadeIn: CLUSTER_FADE_KM });
+  private readonly clusterHazeMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 4, fadeIn: CLUSTER_FADE_KM });
   private readonly sunPoint: StarBatch;
-  private readonly cells: CellStreamer;
+  private readonly cells: GridStreamer;
+  private readonly nearTiles: GridStreamer;
+  private readonly farTiles: GridStreamer;
+  private readonly clusters: GlobularClusterLayer;
+  private readonly exposureMeter = new ExposureMeter();
   private readonly sgrA: Mesh;
   private glow: StarBatch | null = null;
   private catalog: StarBatch | null = null;
   private catalogSource: Hud['stars']['catalogSource'] = 'loading';
+  private dustMap: DustMap | null = null;
+  private readonly dustReady: Promise<DustMap | null>;
+  private dustEnabled = true;
+  private readonly hiddenKinds = new Set<TargetKind>();
   private readonly targets: Target[];
   private readonly targetById = new Map<string, Target>();
   private readonly labelObjects = new Map<string, CSS2DObject>();
   private selected: Target | null = null;
   private quality: QualityPreset;
   private readonly seed: number;
-  private exposure = 8;
+  private exposure = 20;
+  private diffuseGain = 4;
+  private autoExposure = 1;
   private loading = new Set<string>();
 
   jd = dateToJulian(new Date());
@@ -161,13 +258,15 @@ export class Engine {
     this.rig.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
     this.scene.add(this.solar.group);
-    this.cells = new CellStreamer(this.pool, this.cellMaterial, {
-      reach: q.reach,
-      cap: q.cellCap,
+    this.cells = new GridStreamer([this.cellMaterial, this.cellHazeMaterial], this.cellOptions());
+    this.nearTiles = new GridStreamer([this.nearMaterial], this.tileOptions('near'));
+    this.farTiles = new GridStreamer([this.farMaterial], this.tileOptions('far'));
+    this.clusters = new GlobularClusterLayer(this.pool, this.clusterAggregateMaterial, this.clusterStarMaterial, this.clusterHazeMaterial, {
       seed: this.seed,
-      realCatalogMagLimit: NAMED_STARS_COMPLETE_TO_VMAG,
+      cap: q.clusterCap,
     });
-    this.scene.add(this.cells.group);
+    for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) this.scene.add(layer.group);
+    this.applyFades();
 
     // Sgr A*: a black sphere at the event-horizon scale.
     const sgrA = new Mesh(new SphereGeometry(1.27e7, 48, 24), new MeshBasicMaterial({ color: 0x000000 }));
@@ -197,6 +296,8 @@ export class Engine {
     this.rig.pitch = 0.45;
     this.rig.follow = () => sun;
 
+    this.shared.uDustSteps.value = q.dustSteps;
+    this.dustReady = this.loadDust();
     this.applyPixelSizes();
     this.loadGlow();
     void this.loadCatalog();
@@ -205,7 +306,6 @@ export class Engine {
     window.addEventListener('resize', this.resize);
     this.raf = requestAnimationFrame(this.frame);
   }
-
 
   private addLabel(t: Target): void {
     const el = document.createElement('button');
@@ -226,6 +326,32 @@ export class Engine {
     this.labelObjects.set(t.id, obj);
   }
 
+  private async loadDust(): Promise<DustMap | null> {
+    this.loading.add('Dust');
+    try {
+      const map = await this.pool.buildDustMap();
+      if (this.disposed) return null;
+      const half = new Uint16Array(map.data.length);
+      for (let i = 0; i < half.length; i++) half[i] = DataUtils.toHalfFloat(map.data[i]!);
+      const tex = new DataTexture(half, map.size, map.size, RedFormat, HalfFloatType);
+      tex.minFilter = LinearFilter;
+      tex.magFilter = LinearFilter;
+      tex.needsUpdate = true;
+      this.shared.uDustMap.value.dispose();
+      this.shared.uDustMap.value = tex;
+      this.shared.uDustOn.value = this.dustEnabled ? 1 : 0;
+      this.dustMap = map;
+      // The selected object's details gain the modeled extinction now that it can be computed.
+      if (this.selected) this.opts.onSelect?.(this.summary(this.selected));
+      return map;
+    } catch (err) {
+      if (!this.disposed) console.error('Dust model failed', err);
+      return null;
+    } finally {
+      this.loading.delete('Dust');
+    }
+  }
+
   private loadGlow(): void {
     this.loading.add('Galaxy model');
     const count = QUALITY[this.quality].glow;
@@ -237,6 +363,7 @@ export class Engine {
           this.scene.remove(this.glow.points);
           this.glow.dispose();
         }
+        this.exposureMeter.setGlow(buf);
         this.glow = starBatchFromBuffers(buf, this.glowMaterial, false);
         this.scene.add(this.glow.points);
         this.loading.delete('Galaxy model');
@@ -248,7 +375,7 @@ export class Engine {
 
   private async loadCatalog(): Promise<void> {
     this.loading.add('Star catalogue');
-    const hip = this.opts.hipparcosUrl ? await loadHipparcos(this.opts.hipparcosUrl) : null;
+    const [hip, dust] = await Promise.all([this.opts.hipparcosUrl ? loadHipparcos(this.opts.hipparcosUrl) : null, this.dustReady]);
     if (this.disposed) return;
 
     // Named stars are always drawn when Hipparcos lacks them (faint or missing entries).
@@ -274,6 +401,7 @@ export class Engine {
       const p = raDecDistToGalactocentric(s.ra, s.dec, s.distPc);
       push([p[0] - sun[0], p[1] - sun[1], p[2] - sun[2]], teffToLinearRgb(bvToTeff(s.bv)), absoluteMagnitude(s.vmag, s.distPc));
     }
+    if (dust) deredden(dust, positions, colors, absMag, i);
 
     this.catalog = new StarBatch({ count: i, positions, colors, absMag }, sun, this.catalogMaterial, false);
     this.scene.add(this.catalog.points);
@@ -282,14 +410,47 @@ export class Engine {
     this.loading.delete('Star catalogue');
   }
 
-  private cellOptions() {
+  private cellOptions(): GridLayerOptions {
     const q = QUALITY[this.quality];
+    const realCatalogMagLimit = this.catalogSource === 'hipparcos' ? HIPPARCOS_COMPLETE_TO_VMAG : NAMED_STARS_COMPLETE_TO_VMAG;
     return {
-      reach: q.reach,
-      cap: q.cellCap,
-      seed: this.seed,
-      realCatalogMagLimit: this.catalogSource === 'hipparcos' ? HIPPARCOS_COMPLETE_TO_VMAG : NAMED_STARS_COMPLETE_TO_VMAG,
+      sizePc: CELL_SIZE_PC,
+      reach: q.cellReach,
+      // Cells are sorted brightest-first; outer rings draw only their brightest stars.
+      ringFraction: (ring) => (ring <= 1 ? 1 : ring === 2 ? 0.35 : ring === 3 ? 0.15 : 0.08),
+      load: (ix, iy, iz) =>
+        this.pool.generateCell({ ix, iy, iz, cap: q.cellCap, seed: this.seed, realCatalogMagLimit }).then((b) => [b, b.haze]),
     };
+  }
+
+  private tileOptions(level: 'near' | 'far'): GridLayerOptions {
+    const t = QUALITY[this.quality][level];
+    return {
+      sizePc: t.sizePc,
+      reach: 1,
+      maxInFlight: 4,
+      load: (ix, iy, iz) => this.pool.generateTile({ ix, iy, iz, sizePc: t.sizePc, particleLum: t.particleLum, cap: t.cap, seed: this.seed }).then((b) => [b]),
+    };
+  }
+
+  /**
+   * Cross-fades between the level-of-detail shells. Each layer hands over to the next
+   * coarser one over the same distance range, so the weights always sum to one and a
+   * region's brightness doesn't change as it moves between layers.
+   */
+  private fadeOf(layer: GridStreamer): [number, number] {
+    return [layer.guaranteedKm * FADE_FRACTION[0], layer.guaranteedKm * FADE_FRACTION[1]];
+  }
+
+  private applyFades(): void {
+    const cell = this.fadeOf(this.cells);
+    const near = this.fadeOf(this.nearTiles);
+    const far = this.fadeOf(this.farTiles);
+    setFades(this.cellMaterial, null, cell);
+    setFades(this.cellHazeMaterial, null, cell);
+    setFades(this.nearMaterial, cell, near);
+    setFades(this.farMaterial, near, far);
+    setFades(this.glowMaterial, far, null);
   }
 
   // --- Public API -------------------------------------------------------------------
@@ -300,7 +461,12 @@ export class Engine {
     const p = QUALITY[q];
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, p.maxPixelRatio));
     this.bloom.enabled = p.bloom;
+    this.shared.uDustSteps.value = p.dustSteps;
     this.cells.reset(this.cellOptions());
+    this.nearTiles.reset(this.tileOptions('near'));
+    this.farTiles.reset(this.tileOptions('far'));
+    this.clusters.setCap(p.clusterCap);
+    this.applyFades();
     this.applyPixelSizes();
     this.resize();
     this.loadGlow();
@@ -308,6 +474,11 @@ export class Engine {
 
   setExposure(ev: number): void {
     this.exposure = ev;
+  }
+
+  /** Brightness of unresolved light (the Milky Way glow) relative to resolved stars. */
+  setDiffuseGain(gain: number): void {
+    this.diffuseGain = gain;
   }
 
   setBloom(on: boolean): void {
@@ -320,6 +491,20 @@ export class Engine {
 
   setLabelsVisible(on: boolean): void {
     this.opts.labelRoot.style.display = on ? '' : 'none';
+  }
+
+  setLayerVisible(layer: LayerId, on: boolean): void {
+    if (layer === 'dust') {
+      this.dustEnabled = on;
+      this.shared.uDustOn.value = on && this.dustMap ? 1 : 0;
+    } else if (layer === 'clusters') {
+      this.clusters.group.visible = on;
+      if (on) this.hiddenKinds.delete('cluster');
+      else this.hiddenKinds.add('cluster');
+    } else {
+      if (on) this.hiddenKinds.delete('region');
+      else this.hiddenKinds.add('region');
+    }
   }
 
   setTime(jd: number): void {
@@ -344,19 +529,24 @@ export class Engine {
     this.rig.flyTo(t.position, t.viewDistanceKm, { pitch: t.pitch });
   }
 
+  /** Modeled V-band extinction from the Sun to a Galactocentric point (pc), or null before the dust map loads. */
+  extinctionFromSun(galPc: Vec3): number | null {
+    if (!this.dustMap) return null;
+    const s = SUN_GALACTOCENTRIC_PC;
+    return extinctionV(this.dustMap, [s[0] / 1000, s[1] / 1000, s[2] / 1000], [galPc[0] / 1000, galPc[1] / 1000, galPc[2] / 1000]);
+  }
+
   private summary(t: Target): TargetSummary {
-    return { id: t.id, name: t.name, kind: t.kind, subtitle: t.subtitle, provenance: t.provenance, facts: t.facts, details: t.details };
+    const details = { ...t.details };
+    const av = t.galPc && t.kind !== 'region' ? this.extinctionFromSun(t.galPc) : null;
+    if (av !== null) details['Extinction from Sun (model)'] = `A_V ≈ ${av < 10 ? av.toFixed(2) : av.toFixed(0)} mag`;
+    return { id: t.id, name: t.name, kind: t.kind, subtitle: t.subtitle, provenance: t.provenance, facts: t.facts, details };
   }
 
   // --- Frame loop -------------------------------------------------------------------
 
   private applyPixelSizes(): void {
-    const pr = this.renderer.getPixelRatio();
-    for (const m of [this.glowMaterial, this.cellMaterial, this.catalogMaterial, this.sunMaterial] as ShaderMaterial[]) {
-      m.uniforms.uPixelRatio!.value = pr;
-    }
-    this.glowMaterial.uniforms.uMinSize!.value = 2.6;
-    this.glowMaterial.uniforms.uMaxSize!.value = 64;
+    this.shared.uPixelRatio.value = this.renderer.getPixelRatio();
   }
 
   private resize = (): void => {
@@ -366,7 +556,7 @@ export class Engine {
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
     this.labels.setSize(w, h);
-    this.glowMaterial.uniforms.uPixelsPerRadian!.value = h / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+    this.shared.uPixelsPerRadian.value = h / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   };
@@ -391,23 +581,18 @@ export class Engine {
     this.catalog?.rebase(cam);
     this.sunPoint.rebase(cam);
     const camGal = worldKmToGalPc(cam);
+    this.shared.uCamGalKpc.value.set(camGal[0] / 1000, camGal[1] / 1000, camGal[2] / 1000);
     this.cells.update(camGal, cam);
+    this.nearTiles.update(camGal, cam);
+    this.farTiles.update(camGal, cam);
+    this.clusters.update(camGal, cam);
 
-    // Exposure: the glow particles hand over to resolved stars near the camera, and are
-    // boosted when viewing the whole Galaxy from outside so surface brightness holds.
-    const coverage = this.cells.coverageKm;
-    const dGcKpc = cam.length() / KM_PER_KPC;
-    const outside = Math.max(1, dGcKpc / 9) ** 2;
-    const glowU = this.glowMaterial.uniforms;
-    glowU.uExposure!.value = this.exposure * outside;
-    (glowU.uFadeIn!.value as number[])[0] = coverage * 0.6;
-    (glowU.uFadeIn!.value as number[])[1] = coverage * 2.5;
-    const cellU = this.cellMaterial.uniforms;
-    cellU.uExposure!.value = this.exposure;
-    (cellU.uFadeOut!.value as number[])[0] = coverage * 0.6;
-    (cellU.uFadeOut!.value as number[])[1] = coverage * 0.95;
-    this.catalogMaterial.uniforms.uExposure!.value = this.exposure;
-    this.sunMaterial.uniforms.uExposure!.value = this.exposure;
+    // Exposure adapts to how much galactic light reaches the camera (inside vs outside).
+    this.autoExposure = this.exposureMeter.update(dt, camGal, this.rig.reducedMotion);
+    this.shared.uExposure.value = this.exposure * this.autoExposure;
+    // Outside the Galaxy all light is unresolved and the auto exposure already brightens
+    // it, so the extra diffuse gain (an inside-the-disc perception effect) eases off.
+    this.shared.uDiffuseGain.value = 1 + (this.diffuseGain - 1) / Math.max(1, this.autoExposure);
 
     this.updateLabels(cam);
 
@@ -434,10 +619,12 @@ export class Engine {
       const d = obj.position.length();
       // Hide when out of range, or when we're right on top of it (the body fills the view).
       // Star labels would clutter planetary-scale views.
-      const planetaryZoom = t.kind === 'star' && id !== 'sun' && this.rig.distance < 5000 * KM_PER_AU;
-      obj.visible = (d < t.labelRange && d > t.radiusKm * 3 && !planetaryZoom) || this.selected?.id === id;
+      const planetaryZoom = (t.kind === 'star' || t.kind === 'cluster') && id !== 'sun' && this.rig.distance < 5000 * KM_PER_AU;
+      // Spiral arms are labelled only in zoomed-out, galaxy-scale views.
+      const hidden = this.hiddenKinds.has(t.kind) || (t.kind === 'region' && this.rig.distance < ARM_LABEL_MIN_ZOOM_KM);
+      obj.visible = !hidden && ((d < t.labelRange && d > t.radiusKm * 3 && !planetaryZoom) || this.selected?.id === id);
       if (id === 'sun') {
-        const text = d > 0.2 * KM_PER_KPC ? 'Sun · you are here' : 'Sun';
+        const text = d > 200 * KM_PER_PC ? 'Sun · you are here' : 'Sun';
         if (obj.element.textContent !== text) obj.element.textContent = text;
       }
     }
@@ -448,15 +635,22 @@ export class Engine {
     const kpc = camGal.map((c) => c / 1000) as Vec3;
     const cam = this.rig.position;
     let nearest: Hud['nearest'] = null;
+    let nearestTarget: Target | null = null;
     for (const t of this.targets) {
-      if (t.kind === 'galaxy') continue;
+      if (t.kind === 'galaxy' || t.kind === 'region') continue;
       const d = t.position().distanceTo(cam);
       // From outside the planetary system, report the Sun rather than an individual planet.
       if ((t.kind === 'planet' || t.kind === 'dwarf-planet' || t.kind === 'moon') && d > 2000 * KM_PER_AU) continue;
-      if (!nearest || d < nearest.distanceKm) nearest = { id: t.id, name: t.name, distanceKm: Math.max(0, d - t.radiusKm) };
+      if (!nearest || d < nearest.distanceKm) {
+        nearest = { id: t.id, name: t.name, distanceKm: Math.max(0, d - t.radiusKm) };
+        nearestTarget = t;
+      }
     }
+    // Inside a globular cluster (within ~10 half-light radii), name the cluster as the region.
+    const inCluster = nearestTarget?.kind === 'cluster' && nearest!.distanceKm < Math.max(30 * KM_PER_PC, 10 * nearestTarget.radiusKm);
     const h = this.opts.canvas.clientHeight || 1;
     const kmPerPixel = (2 * this.rig.distance * Math.tan((this.camera.fov * Math.PI) / 360)) / h;
+    const pendingTiles = this.nearTiles.pending + this.farTiles.pending;
     return {
       jd: this.jd,
       timeRate: this.timeRate,
@@ -465,7 +659,7 @@ export class Engine {
       l: lbd.l,
       b: lbd.b,
       dPc: lbd.d,
-      region: regionName(kpc[0], kpc[1], kpc[2]),
+      region: inCluster ? `${nearestTarget!.name} (globular cluster)` : regionName(kpc[0], kpc[1], kpc[2]),
       modeled: lbd.d > CATALOG_REACH_PC,
       nearest,
       targetName: this.selected?.name ?? null,
@@ -473,13 +667,20 @@ export class Engine {
       speedKmS: this.rig.speedKmS,
       kmPerPixel,
       fps: this.fps,
+      autoExposure: this.autoExposure,
       stars: {
         glow: this.glow?.count ?? 0,
-        cells: this.cells.starCount,
+        tiles: this.nearTiles.starCount + this.farTiles.starCount,
+        cells: this.cells.starCount + this.clusters.starCount,
         catalog: this.catalog?.count ?? 0,
         catalogSource: this.catalogSource,
       },
-      loading: [...this.loading, ...(this.cells.pending > 0 ? [`Star cells (${this.cells.pending})`] : [])],
+      loading: [
+        ...this.loading,
+        ...(this.cells.pending > 0 ? [`Star cells (${this.cells.pending})`] : []),
+        ...(pendingTiles > 0 ? [`Galaxy tiles (${pendingTiles})`] : []),
+        ...(this.clusters.pending > 0 ? ['Cluster stars'] : []),
+      ],
     };
   }
 
@@ -489,12 +690,35 @@ export class Engine {
     window.removeEventListener('resize', this.resize);
     this.rig.dispose();
     this.pool.dispose();
-    this.cells.dispose();
+    for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) layer.dispose();
     this.glow?.dispose();
     this.catalog?.dispose();
+    this.shared.uDustMap.value.dispose();
     for (const obj of this.labelObjects.values()) obj.element.remove();
     this.composer.dispose();
     this.renderer.dispose();
   }
 }
 
+/**
+ * Real catalogue magnitudes and colours already include the dust between the star and the
+ * Sun. Remove the modeled extinction so the shader can apply the right amount from
+ * wherever the camera is (from the Sun the two cancel exactly).
+ */
+function deredden(dust: DustMap, positions: Float32Array, colors: Uint8Array, absMag: Float32Array, n: number): void {
+  const s = SUN_GALACTOCENTRIC_PC;
+  const sun: Vec3 = [s[0] / 1000, s[1] / 1000, s[2] / 1000];
+  for (let i = 0; i < n; i++) {
+    const star: Vec3 = [sun[0] + positions[i * 3]! / 1000, sun[1] + positions[i * 3 + 1]! / 1000, sun[2] + positions[i * 3 + 2]! / 1000];
+    const av = extinctionV(dust, sun, star, 16);
+    if (av < 1e-3) continue;
+    absMag[i] = absMag[i]! - av;
+    let max = 0;
+    const rgb = DUST.rgb.map((k, c) => {
+      const v = colors[i * 3 + c]! * 10 ** (0.4 * av * (k - 1));
+      max = Math.max(max, v);
+      return v;
+    });
+    for (let c = 0; c < 3; c++) colors[i * 3 + c] = Math.round((rgb[c]! / max) * 255);
+  }
+}

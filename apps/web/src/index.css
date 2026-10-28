@@ -83,6 +83,24 @@ body,
   color: rgb(139 124 255 / 0.95);
   font-weight: 600;
 }
+.vl-label--cluster {
+  color: rgb(255 214 150 / 0.8);
+}
+.vl-label--cluster::before {
+  border-style: dotted;
+}
+/* Spiral arms: large structures, labelled in spaced small caps without a marker. */
+.vl-label--region {
+  padding-left: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(61 214 198 / 0.62);
+}
+.vl-label--region::before {
+  display: none;
+}
 
 /* Themes */
 .theme-night #root {

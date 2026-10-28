@@ -1,9 +1,15 @@
 import type { StarBuffers } from './buffers';
 import type { CellBuffers, CellRequest } from './cells';
+import type { ClusterBuffers, ClusterRequest } from './clusters';
+import type { DustMap } from './dust';
 import type { GlowOptions } from './glow';
 import type { WorkerRequest, WorkerResponse } from './protocol';
+import type { TileRequest } from './tiles';
 
 type Pending = { resolve: (b: never) => void; reject: (e: Error) => void };
+
+// Distributive Omit, so each request variant keeps its own fields.
+type RequestBody = WorkerRequest extends infer R ? (R extends WorkerRequest ? Omit<R, 'id'> : never) : never;
 
 /** Small pool of generation workers; requests are dealt round-robin. */
 export class GalaxyWorkerPool {
@@ -28,7 +34,8 @@ export class GalaxyWorkerPool {
     else p.resolve(res.buffers as never);
   }
 
-  private send<T>(req: WorkerRequest): Promise<T> {
+  private send<T>(body: RequestBody): Promise<T> {
+    const req = { ...body, id: this.nextId++ } as WorkerRequest;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(req.id, { resolve: resolve as (b: never) => void, reject });
       this.workers[this.turn++ % this.workers.length]!.postMessage(req);
@@ -36,11 +43,23 @@ export class GalaxyWorkerPool {
   }
 
   generateGlow(options: GlowOptions): Promise<StarBuffers> {
-    return this.send({ id: this.nextId++, type: 'glow', options });
+    return this.send({ type: 'glow', options });
   }
 
   generateCell(request: CellRequest): Promise<CellBuffers> {
-    return this.send({ id: this.nextId++, type: 'cell', request });
+    return this.send({ type: 'cell', request });
+  }
+
+  generateTile(request: TileRequest): Promise<StarBuffers> {
+    return this.send({ type: 'tile', request });
+  }
+
+  generateCluster(request: ClusterRequest): Promise<ClusterBuffers> {
+    return this.send({ type: 'cluster', request });
+  }
+
+  buildDustMap(): Promise<DustMap> {
+    return this.send({ type: 'dust' });
   }
 
   dispose(): void {

@@ -4,14 +4,18 @@
  * the same stars. A per-cell star budget is met by keeping only the brightest stars
  * (raising the minimum mass), which keeps dense regions like the bulge tractable.
  */
-import { SUN_GALACTOCENTRIC_PC, type Vec3 } from '@starhome/astro';
+import { SUN_ABS_MAG_V, SUN_GALACTOCENTRIC_PC, type Vec3 } from '@starhome/astro';
 import { StarBufferBuilder, type StarBuffers } from './buffers';
+import { defaultDustMap, extinctionV } from './dust';
 import { armEnhancement, componentDensities } from './model';
 import {
+  LIGHT_TO_MASS,
   MASS_FUNCTIONS,
   evolvedStar,
   fractionAbove,
   giantsPerMsun,
+  meanGiantLight,
+  msLightBelow,
   mainSequenceStar,
   sampleMass,
   type PopulationId,
@@ -42,7 +46,17 @@ export interface CellBuffers extends StarBuffers {
   minMass: number;
   /** Expected number of stars brighter than the floor mass before the budget was applied. */
   expectedTotal: number;
+  /**
+   * Unresolved light: the stars the budget left out (faint dwarfs, thinned giants) as a
+   * few aggregate particles, so dense regions keep their surface brightness up close.
+   */
+  haze: StarBuffers;
 }
+
+/** Aggregate particles used for a cell's unresolved light. */
+const HAZE_PARTICLES = 24;
+/** Light-weighted colour of the unresolved remainder (mostly K/M dwarfs and thinned giants). */
+const HAZE_TEFF = 4300;
 
 export function cellKey(ix: number, iy: number, iz: number): string {
   return `${ix},${iy},${iz}`;
@@ -56,16 +70,16 @@ export function cellCenter(ix: number, iy: number, iz: number): Vec3 {
   return [(ix + 0.5) * CELL_SIZE_PC, (iy + 0.5) * CELL_SIZE_PC, (iz + 0.5) * CELL_SIZE_PC];
 }
 
-/** Expected number of main-sequence and evolved stars per population in a cell. */
-export function cellExpectations(center: Vec3): Record<PopulationId, { ms: number; giants: number }> {
+/** Expected stellar mass and number of main-sequence and evolved stars per population in a cell. */
+export function cellExpectations(center: Vec3): Record<PopulationId, { mass: number; ms: number; giants: number }> {
   const k = center.map((c) => c / 1000) as Vec3;
   const d = componentDensities(k[0], k[1], k[2], armEnhancement(k[0], k[1]));
   const volume = CELL_SIZE_PC ** 3;
   const rho: Record<PopulationId, number> = { young: d.young, thin: d.thin, old: d.thick + d.bulge + d.halo };
-  const out = {} as Record<PopulationId, { ms: number; giants: number }>;
+  const out = {} as Record<PopulationId, { mass: number; ms: number; giants: number }>;
   for (const pop of Object.keys(rho) as PopulationId[]) {
     const mass = rho[pop] * volume;
-    out[pop] = { ms: mass / MASS_FUNCTIONS[pop].meanMass, giants: mass * giantsPerMsun(pop) };
+    out[pop] = { mass, ms: mass / MASS_FUNCTIONS[pop].meanMass, giants: mass * giantsPerMsun(pop) };
   }
   return out;
 }
@@ -97,6 +111,9 @@ export function generateCell(req: CellRequest): CellBuffers {
   const out = new StarBufferBuilder(center, Math.min(cap, 4096));
   const half = CELL_SIZE_PC / 2;
   const sun = SUN_GALACTOCENTRIC_PC;
+  // Extinction from the Sun to this cell: a star hidden by dust is not in the real catalogue.
+  const sunKpc: Vec3 = [sun[0] / 1000, sun[1] / 1000, sun[2] / 1000];
+  const avFromSun = extinctionV(defaultDustMap(), sunKpc, [center[0] / 1000, center[1] / 1000, center[2] / 1000], 24);
 
   const place = (absMag: number, teff: number) => {
     const x = center[0] + rng.range(-half, half);
@@ -105,7 +122,8 @@ export function generateCell(req: CellRequest): CellBuffers {
     const dSun = Math.hypot(x - sun[0], y - sun[1], z - sun[2]);
     // Nothing synthetic inside the well-surveyed solar neighbourhood shell.
     if (dSun < 3) return;
-    if (absMag + 5 * Math.log10(dSun) - 5 < req.realCatalogMagLimit) return;
+    // Real catalogues take precedence: drop stars they already contain.
+    if (absMag + 5 * Math.log10(dSun) - 5 + avFromSun < req.realCatalogMagLimit) return;
     out.addTeff(x, y, z, teff, absMag);
   };
 
@@ -122,10 +140,23 @@ export function generateCell(req: CellRequest): CellBuffers {
     }
   }
 
+  // Light the budget left out, as an expectation (not the random shortfall, which would
+  // turn every cell that happened to draw no supergiant into a glowing haze).
+  const expectedLight = pops.reduce((s, p) => s + exp[p].mass * LIGHT_TO_MASS[p], 0);
+  const deficit = pops.reduce((s, p) => s + exp[p].mass * msLightBelow(p, minMass) + (1 - giantScale) * exp[p].giants * meanGiantLight(p), 0);
+  const haze = new StarBufferBuilder(center, HAZE_PARTICLES);
+  if (deficit > 0.02 * expectedLight && deficit > 1) {
+    const absMag = SUN_ABS_MAG_V - 2.5 * Math.log10(deficit / HAZE_PARTICLES);
+    for (let i = 0; i < HAZE_PARTICLES; i++) {
+      haze.addTeff(center[0] + rng.range(-half, half), center[1] + rng.range(-half, half), center[2] + rng.range(-half, half), HAZE_TEFF, absMag);
+    }
+  }
+
   return {
     ...out.build(true),
     key: cellKey(ix, iy, iz),
     minMass,
     expectedTotal: msAbove(CELL_MASS_FLOOR) + giantsTotal,
+    haze: haze.build(),
   };
 }

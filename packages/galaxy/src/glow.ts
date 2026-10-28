@@ -1,39 +1,50 @@
 /**
  * The "glow" layer: aggregate particles that each stand for many stars, distributed
  * like the Galaxy's light. Seen from afar they form the spiral disc; seen from inside
- * they form the Milky Way band. The renderer fades them out near the camera, where
- * individually generated stars (cells.ts) take over.
+ * they form the Milky Way band. The renderer fades them out around the camera, where
+ * finer level-of-detail shells (tiles.ts, cells.ts) take over.
  */
-import { SUN_ABS_MAG_V, teffToLinearRgb, type Vec3 } from '@starhome/astro';
+import { SUN_ABS_MAG_V, type Vec3 } from '@starhome/astro';
 import { StarBufferBuilder, type StarBuffers } from './buffers';
+import { componentColor, type LightComponent } from './light';
 import {
   BAR,
   DISC,
   NUCLEAR_DISC,
-  R0_KPC,
   SATELLITES,
   SPIRAL_ARMS,
   armEnhancement,
   armRadius,
   armWidth,
   barFrameToGalactocentric,
+  satelliteToGalactocentric,
   xyFromRBeta,
+  type Satellite,
   type SpiralArm,
 } from './model';
+import { LIGHT_TO_MASS } from './populations';
 import { Rng, hash32 } from './rng';
 
-/** Approximate V-band luminosity budget of each component, L_sun (total ~2.7e10). */
+/**
+ * V-band luminosity of each component, L_sun (total ~2.5e10): the density model integrated
+ * with the populations' light-to-mass ratios (integrateComponentLight; checked in tests).
+ */
 export const COMPONENT_LUMINOSITY = {
-  young: 6e9,
-  thin: 1.4e10,
-  bulge: 5e9,
-  thick: 1.5e9,
-  halo: 2e8,
+  young: 2.65e9,
+  thin: 1.57e10,
+  bulge: 3.73e9,
+  thick: 2.84e9,
+  halo: 4.85e8,
 } as const;
 
 const MIN_SHARE: Record<string, number> = { halo: 0.02, thick: 0.05, lmc: 0.04, smc: 0.015, 'sgr-dsph': 0.004 };
 
-const HII_RGB: [number, number, number] = [1.0, 0.22, 0.32];
+/** Fraction of the bulge's mass in the nuclear stellar disc (Launhardt et al. 2002 vs the bar). */
+const NUCLEAR_FRACTION = (() => {
+  const nuclear = NUCLEAR_DISC.rho0 * 2 * Math.PI * NUCLEAR_DISC.rd ** 2 * 2 * NUCLEAR_DISC.hz;
+  const bar = BAR.rho0 * (2 * Math.PI) ** 1.5 * BAR.x0 * BAR.y0 * BAR.z0;
+  return nuclear / (nuclear + bar);
+})();
 
 function absMagFromLum(l: number): number {
   return SUN_ABS_MAG_V - 2.5 * Math.log10(l);
@@ -74,6 +85,40 @@ function pointOnArm(rng: Rng): { x: number; y: number; r: number; arm: SpiralArm
   }
 }
 
+/** Sample a point (kpc) from a satellite's density profile (model.ts satelliteDensity). */
+function pointInSatellite(rng: Rng, sat: Satellite): Vec3 {
+  const [cx, cy, cz] = sat.center;
+  const sh = sat.shape;
+  if (sh.kind === 'disc') {
+    let d: [number, number, number];
+    if (rng.next() < sh.barFraction) {
+      d = [rng.normal() * sh.bar[0], rng.normal() * sh.bar[1], rng.normal() * sh.bar[2]];
+    } else {
+      const r = gammaDiscRadius(rng, sh.rd, 3 * sat.radius);
+      const phi = rng.next() * 2 * Math.PI;
+      d = [r * Math.cos(phi), r * Math.sin(phi), rng.laplace(sh.hz)];
+    }
+    const g = satelliteToGalactocentric(sh, d);
+    return [cx + g[0], cy + g[1], cz + g[2]];
+  }
+  // Triaxial Gaussian: isotropic core sigma[0] plus the long axis.
+  const along = rng.normal() * Math.sqrt(Math.max(0, sh.sigma[2] ** 2 - sh.sigma[0] ** 2));
+  return [
+    cx + rng.normal() * sh.sigma[0] + along * sh.axis[0],
+    cy + rng.normal() * sh.sigma[0] + along * sh.axis[1],
+    cz + rng.normal() * sh.sigma[0] + along * sh.axis[2],
+  ];
+}
+
+/** Which population a satellite particle's light comes from, weighted by light. */
+function satelliteComponent(rng: Rng, sat: Satellite): LightComponent {
+  const y = sat.mix.young * LIGHT_TO_MASS.young;
+  const t = sat.mix.thin * LIGHT_TO_MASS.thin;
+  const o = sat.mix.old * LIGHT_TO_MASS.old;
+  const u = rng.next() * (y + t + o);
+  return u < y ? 'young' : u < y + t ? 'thin' : 'halo';
+}
+
 export interface GlowOptions {
   count: number;
   seed: number;
@@ -101,7 +146,6 @@ export function generateGlow({ count, seed }: GlowOptions): StarBuffers {
     const lum = () => meanLum * norm * 10 ** (sigma * rng.normal());
     const kpc = (x: number, y: number, z: number, rgb: [number, number, number], l: number) =>
       out.add(x * 1000, y * 1000, z * 1000, rgb, absMagFromLum(l));
-    const teffRgb = (logMean: number, logSigma: number) => teffToLinearRgb(10 ** (logMean + logSigma * rng.normal()));
 
     switch (b.id) {
       case 'young': {
@@ -127,10 +171,7 @@ export function generateGlow({ count, seed }: GlowOptions): StarBuffers {
             x = r * Math.cos(phi);
             y = r * Math.sin(phi);
           }
-          const z = rng.laplace(0.07);
-          const kind = rng.next();
-          const rgb = kind < 0.1 ? HII_RGB : kind < 0.3 ? teffRgb(Math.log10(8000), 0.05) : teffRgb(Math.log10(14_000), 0.1);
-          kpc(x, y, z, rgb, lum());
+          kpc(x, y, rng.laplace(DISC.young.hz), componentColor('young', rng), lum());
         }
         break;
       }
@@ -145,9 +186,10 @@ export function generateGlow({ count, seed }: GlowOptions): StarBuffers {
             const phi = rng.next() * 2 * Math.PI;
             x = r * Math.cos(phi);
             y = r * Math.sin(phi);
-            if (rng.next() * 1.3 < 1 + 0.2 * armEnhancement(x, y)) break;
+            // Same arm modulation as the density model.
+            if (rng.next() * (1 + 1.7 * DISC.thinArmContrast) < 1 + DISC.thinArmContrast * armEnhancement(x, y)) break;
           }
-          kpc(x, y, rng.laplace(DISC.thin.hz), teffRgb(Math.log10(5600), 0.05), lum());
+          kpc(x, y, rng.laplace(DISC.thin.hz), componentColor('thin', rng), lum());
         }
         break;
       }
@@ -155,16 +197,16 @@ export function generateGlow({ count, seed }: GlowOptions): StarBuffers {
         for (let k = 0; k < n; k++) {
           const r = gammaDiscRadius(rng, DISC.thick.rd, 20);
           const phi = rng.next() * 2 * Math.PI;
-          kpc(r * Math.cos(phi), r * Math.sin(phi), rng.laplace(DISC.thick.hz), teffRgb(Math.log10(5000), 0.03), lum());
+          kpc(r * Math.cos(phi), r * Math.sin(phi), rng.laplace(DISC.thick.hz), componentColor('thick', rng), lum());
         }
         break;
       }
       case 'bulge': {
         for (let k = 0; k < n; k++) {
-          if (rng.next() < 0.08) {
-            const r = gammaDiscRadius(rng, NUCLEAR_DISC.rd, 0.5) * 0.5;
+          if (rng.next() < NUCLEAR_FRACTION) {
+            const r = gammaDiscRadius(rng, NUCLEAR_DISC.rd, 0.5);
             const phi = rng.next() * 2 * Math.PI;
-            kpc(r * Math.cos(phi), r * Math.sin(phi), rng.laplace(NUCLEAR_DISC.hz), teffRgb(Math.log10(4600), 0.04), lum());
+            kpc(r * Math.cos(phi), r * Math.sin(phi), rng.laplace(NUCLEAR_DISC.hz), componentColor('bulge', rng), lum());
             continue;
           }
           const u = rng.normal() * BAR.x0;
@@ -172,11 +214,12 @@ export function generateGlow({ count, seed }: GlowOptions): StarBuffers {
           // Boxy/peanut shape: vertical extent grows away from the centre along the bar.
           const z = rng.normal() * BAR.z0 * (0.7 + 0.35 * Math.min(1.5, Math.abs(u) / BAR.x0));
           const [x, y] = barFrameToGalactocentric(u, v);
-          kpc(x, y, z, teffRgb(Math.log10(4500), 0.04), lum());
+          kpc(x, y, z, componentColor('bulge', rng), lum());
         }
         break;
       }
       case 'halo': {
+        // Power law rho ~ r^-3.5 between 1 and 100 kpc, flattened to q = 0.65.
         const a = 1 ** -0.5;
         const bb = 100 ** -0.5;
         for (let k = 0; k < n; k++) {
@@ -184,49 +227,15 @@ export function generateGlow({ count, seed }: GlowOptions): StarBuffers {
           const cz = rng.range(-1, 1);
           const phi = rng.next() * 2 * Math.PI;
           const s = Math.sqrt(1 - cz * cz);
-          kpc(r * s * Math.cos(phi), r * s * Math.sin(phi), r * cz * 0.65, teffRgb(Math.log10(5300), 0.04), lum());
+          kpc(r * s * Math.cos(phi), r * s * Math.sin(phi), r * cz * 0.65, componentColor('halo', rng), lum());
         }
         break;
       }
       default: {
         const sat = SATELLITES.find((s) => s.id === b.id)!;
-        const [cx, cy, cz] = sat.center;
         for (let k = 0; k < n; k++) {
-          let x: number;
-          let y: number;
-          let z: number;
-          if (sat.id === 'lmc') {
-            // Inclined exponential disc plus an off-centre bar.
-            const r = rng.next() < 0.2 ? Math.abs(rng.normal()) * 0.5 : gammaDiscRadius(rng, 1.4, 9);
-            const phi = rng.next() * 2 * Math.PI;
-            const dx = rng.next() < 0.2 ? rng.normal() * 1.4 : r * Math.cos(phi);
-            const dy = rng.next() < 0.2 ? rng.normal() * 0.35 : r * Math.sin(phi);
-            const dz = rng.laplace(0.25);
-            // Tilt ~35 deg about the x axis and ~20 deg about z.
-            const t = 35 * (Math.PI / 180);
-            const y1 = dy * Math.cos(t) - dz * Math.sin(t);
-            const z1 = dy * Math.sin(t) + dz * Math.cos(t);
-            const p = 20 * (Math.PI / 180);
-            x = cx + dx * Math.cos(p) - y1 * Math.sin(p);
-            y = cy + dx * Math.sin(p) + y1 * Math.cos(p);
-            z = cz + z1;
-          } else if (sat.id === 'smc') {
-            // Elongated largely along our line of sight.
-            const los = [-R0_KPC - cx, -cy, -cz];
-            const ln = Math.hypot(los[0]!, los[1]!, los[2]!);
-            const along = rng.normal() * 2.2;
-            x = cx + rng.normal() * 0.9 + (along * los[0]!) / ln;
-            y = cy + rng.normal() * 0.9 + (along * los[1]!) / ln;
-            z = cz + rng.normal() * 0.9 + (along * los[2]!) / ln;
-          } else {
-            // Sagittarius dSph: elongated perpendicular to the Galactic plane.
-            x = cx + rng.normal() * 0.6;
-            y = cy + rng.normal() * 0.6;
-            z = cz + rng.normal() * 2.2;
-          }
-          const young = sat.id !== 'sgr-dsph' && rng.next() < 0.55;
-          const rgb = young ? teffRgb(Math.log10(11_000), 0.12) : teffRgb(Math.log10(5400), 0.05);
-          kpc(x, y, z, rgb, lum());
+          const [x, y, z] = pointInSatellite(rng, sat);
+          kpc(x, y, z, componentColor(satelliteComponent(rng, sat), rng), lum());
         }
       }
     }

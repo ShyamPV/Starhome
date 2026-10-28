@@ -4,13 +4,14 @@
  * Accuracy target: plausible luminosity functions and colours, not individual stars.
  */
 import {
+  SUN_ABS_MAG_V,
   absMagVFromLuminosity,
   mainSequenceLifetimeYr,
   mainSequenceLuminosity,
   mainSequenceRadius,
   teffFromLR,
 } from '@starhome/astro';
-import type { Rng } from './rng';
+import { Rng } from './rng';
 
 export type PopulationId = 'young' | 'thin' | 'old';
 
@@ -124,6 +125,66 @@ export function mainSequenceStar(mass: number, rng: Rng): SynthStar {
   const teff = teffFromLR(lum, mainSequenceRadius(mass));
   return { teff, lum, absMagV: absMagVFromLuminosity(lum, teff), evolved: false };
 }
+
+function lumV(absMagV: number): number {
+  return 10 ** (-0.4 * (absMagV - SUN_ABS_MAG_V));
+}
+
+interface LightTable {
+  /** Cumulative main-sequence V light per M_sun of population at each mass-bin edge. */
+  msCumulative: Float64Array;
+  /** Mean V luminosity of an evolved star, L_sun. */
+  giantMean: number;
+}
+
+function buildLightTable(pop: PopulationId): LightTable {
+  const t = MASS_FUNCTIONS[pop];
+  const msCumulative = new Float64Array(BINS + 1);
+  for (let i = 0; i < BINS; i++) {
+    const m = 10 ** (0.5 * (t.logM[i]! + t.logM[i + 1]!));
+    const lum = mainSequenceLuminosity(m);
+    const light = (t.cdf[i + 1]! - t.cdf[i]!) * lumV(absMagVFromLuminosity(lum, teffFromLR(lum, mainSequenceRadius(m))));
+    msCumulative[i + 1] = msCumulative[i]! + light / t.meanMass;
+  }
+  // Mean evolved-star light from a fixed-seed sample of the evolved channel.
+  const rng = new Rng(0x6a1a);
+  let giant = 0;
+  const n = 4000;
+  for (let i = 0; i < n; i++) giant += lumV(evolvedStar(pop, rng).absMagV);
+  return { msCumulative, giantMean: giant / n };
+}
+
+const LIGHT_TABLES: Record<PopulationId, LightTable> = {
+  young: buildLightTable('young'),
+  thin: buildLightTable('thin'),
+  old: buildLightTable('old'),
+};
+
+/** V light per M_sun of population from main-sequence stars below mass m. */
+export function msLightBelow(pop: PopulationId, m: number): number {
+  const c = LIGHT_TABLES[pop].msCumulative;
+  const x = ((Math.log10(Math.max(M_MIN, Math.min(M_MAX, m))) - LOG_MIN) / (LOG_MAX - LOG_MIN)) * BINS;
+  const i = Math.min(BINS - 1, Math.floor(x));
+  const f = x - i;
+  return c[i]! * (1 - f) + c[i + 1]! * f;
+}
+
+/** Mean V luminosity of the population's evolved stars, L_sun. */
+export function meanGiantLight(pop: PopulationId): number {
+  return LIGHT_TABLES[pop].giantMean;
+}
+
+/**
+ * V-band light-to-mass ratio (L_sun / M_sun) of each population: living main-sequence
+ * stars integrated over the present-day mass function, plus the evolved-star channel.
+ * Everything that converts the density model into light (tiles, haze, glow budgets)
+ * uses these, so aggregate light matches the individually generated stars.
+ */
+export const LIGHT_TO_MASS: Record<PopulationId, number> = {
+  young: msLightBelow('young', M_MAX) + SPECS.young.giantsPerMsun * LIGHT_TABLES.young.giantMean,
+  thin: msLightBelow('thin', M_MAX) + SPECS.thin.giantsPerMsun * LIGHT_TABLES.thin.giantMean,
+  old: msLightBelow('old', M_MAX) + SPECS.old.giantsPerMsun * LIGHT_TABLES.old.giantMean,
+};
 
 export function evolvedStar(pop: PopulationId, rng: Rng): SynthStar {
   let lum: number;

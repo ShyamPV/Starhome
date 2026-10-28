@@ -40,8 +40,12 @@ export function Hud() {
       </div>
       <div className="mt-2 flex justify-between border-t border-line pt-2 text-[10px] text-ink-faint">
         <span className="tabular font-mono">{Math.round(hud.fps)} fps</span>
-        <span className="tabular font-mono" title="Glow particles · streamed synthetic stars · catalogue stars">
-          {(hud.stars.glow / 1e6).toFixed(1)}M · {(hud.stars.cells / 1e3).toFixed(0)}k · {(hud.stars.catalog / 1e3).toFixed(1)}k {hud.stars.catalogSource === 'hipparcos' ? 'HIP' : ''}
+        <span
+          className="tabular font-mono"
+          title={`Galaxy glow particles · level-of-detail tiles · resolved synthetic stars · catalogue stars. Auto exposure ×${hud.autoExposure.toFixed(1)}`}
+        >
+          {(hud.stars.glow / 1e6).toFixed(1)}M · {(hud.stars.tiles / 1e3).toFixed(0)}k · {(hud.stars.cells / 1e3).toFixed(0)}k · {(hud.stars.catalog / 1e3).toFixed(1)}k{' '}
+          {hud.stars.catalogSource === 'hipparcos' ? 'HIP' : ''}
         </span>
       </div>
     </section>

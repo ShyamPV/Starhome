@@ -107,3 +107,25 @@ export class Rng {
     return k;
   }
 }
+
+function lattice(ix: number, iy: number, iz: number): number {
+  return hash32(0x5eed, ix, iy, iz) / 4294967296;
+}
+
+function fade(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+/** Deterministic 3D value noise in [0, 1): smooth interpolation of hashed lattice values. */
+export function valueNoise(x: number, y: number, z: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const iz = Math.floor(z);
+  const fx = fade(x - ix);
+  const fy = fade(y - iy);
+  const fz = fade(z - iz);
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const plane = (k: number) =>
+    lerp(lerp(lattice(ix, iy, k), lattice(ix + 1, iy, k), fx), lerp(lattice(ix, iy + 1, k), lattice(ix + 1, iy + 1, k), fx), fy);
+  return lerp(plane(iz), plane(iz + 1), fz);
+}
