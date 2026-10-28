@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useApp, type NavSection, type Theme } from '../state/store';
 import { ChevronIcon, ExploreIcon, GalaxyIcon, SettingsIcon, SkyIcon } from './icons';
+import { SkyPanel } from './SkyPanel';
 
 const SECTIONS: { id: NavSection; label: string; Icon: typeof GalaxyIcon }[] = [
   { id: 'galaxy', label: 'Galaxy', Icon: GalaxyIcon },
@@ -37,14 +38,22 @@ function Heading({ children }: { children: ReactNode }) {
 }
 
 function GalaxyPanel() {
-  const { engine, orbits, labels, dust, clusters, arms, set } = useApp();
+  const { engine, orbits, labels, dust, clusters, arms, view, set } = useApp();
+  const go = (id: string) => {
+    // Destinations are places in the Galaxy: leave the view from the ground first.
+    if (view === 'sky') {
+      engine?.setViewMode('galaxy');
+      set({ view: 'galaxy' });
+    }
+    engine?.flyTo(id);
+  };
   return (
     <>
       <Heading>Go to</Heading>
       <ul className="space-y-0.5">
         {DESTINATIONS.map((d) => (
           <li key={d.id}>
-            <button onClick={() => engine?.flyTo(d.id)} className="group w-full rounded-lg px-2 py-1.5 text-left hover:bg-violet/10">
+            <button onClick={() => go(d.id)} className="group w-full rounded-lg px-2 py-1.5 text-left hover:bg-violet/10">
               <span className="block text-sm text-ink group-hover:text-white">{d.label}</span>
               <span className="block text-[11px] text-ink-faint">{d.hint}</span>
             </button>
@@ -151,13 +160,7 @@ export function NavRail() {
         <div className="glass w-64 overflow-y-auto rounded-2xl p-4">
           <h2 className="mb-3 text-base font-semibold tracking-tight">{SECTIONS.find((s) => s.id === nav)!.label}</h2>
           {nav === 'galaxy' && <GalaxyPanel />}
-          {nav === 'sky' && (
-            <ComingSoon
-              title="Real-time sky from Earth"
-              deliverable={3}
-              items={['Sun, Moon and planets from VSOP87/ELP in a worker', 'Your location: alt/az, rise/set, constellations', 'ISS and bright satellites (SGP4)', 'Where the Milky Way band and Galactic centre are tonight']}
-            />
-          )}
+          {nav === 'sky' && <SkyPanel />}
           {nav === 'explore' && (
             <ComingSoon
               title="Catalogue hub"
@@ -174,10 +177,13 @@ export function NavRail() {
 
 /** Pushes settings from the store into the engine and the document theme. */
 export function useEngineSettings() {
-  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, theme } = useApp();
+  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, theme, view, location, skyLayers } = useApp();
   useEffect(() => engine?.setQuality(quality), [engine, quality]);
   useEffect(() => engine?.setExposure(exposure), [engine, exposure]);
   useEffect(() => engine?.setDiffuseGain(glow), [engine, glow]);
+  useEffect(() => engine?.setLocation(location), [engine, location]);
+  useEffect(() => engine?.setSkyLayers(skyLayers), [engine, skyLayers]);
+  useEffect(() => engine?.setViewMode(view), [engine, view]);
   useEffect(() => engine?.setBloom(bloom), [engine, bloom]);
   useEffect(() => engine?.setOrbitsVisible(orbits), [engine, orbits]);
   useEffect(() => engine?.setLabelsVisible(labels), [engine, labels]);

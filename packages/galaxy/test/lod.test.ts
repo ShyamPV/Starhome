@@ -66,6 +66,15 @@ describe('light model', () => {
     expect(sum / n).toBeLessThan(1.1);
   });
 
+  it('shows the Large Magellanic Cloud inclined ~30 deg to our line of sight (an oval, not a streak)', () => {
+    const lmc = SATELLITES.find((s) => s.id === 'lmc')!;
+    if (lmc.shape.kind !== 'disc') throw new Error('LMC should be a disc');
+    const los = [lmc.center[0] + R0_KPC, lmc.center[1], lmc.center[2]];
+    const n = lmc.shape.axes[2];
+    const cos = Math.abs(n[0] * los[0]! + n[1] * los[1]! + n[2] * los[2]!) / Math.hypot(...los);
+    expect(Math.acos(cos) * (180 / Math.PI)).toBeCloseTo(30, 0);
+  });
+
   it('normalises each satellite galaxy to its stellar mass', () => {
     for (const s of SATELLITES) {
       const step = s.radius / 20;

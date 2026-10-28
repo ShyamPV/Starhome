@@ -55,3 +55,24 @@ test('galaxy layers can be toggled', async ({ page }) => {
     await expect(toggle).not.toBeChecked();
   }
 });
+
+test('sky view: look up from a chosen place, find a planet, return to the galaxy', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Sky', exact: true }).click();
+  await page.getByRole('button', { name: 'Look up from Earth' }).click();
+  await expect(page.getByLabel('Sky position')).toContainText('Looking at', { timeout: 20_000 });
+  await page.getByLabel('Observatory presets').selectOption({ label: 'Paranal, Chile' });
+  await expect(page.getByLabel('Sky position')).toContainText('24.63° S, 70.40° W');
+  await expect(page.getByLabel("Tonight's sky")).toContainText('Galactic centre', { timeout: 30_000 });
+
+  await page.keyboard.press('Control+K');
+  await page.keyboard.type('Jupiter');
+  await page.keyboard.press('Enter');
+  const panel = page.getByRole('complementary', { name: 'Jupiter details' });
+  await expect(panel.getByLabel('Where to find it')).toContainText('Constellation', { timeout: 30_000 });
+  await expect(panel.getByRole('button', { name: 'Point to it' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Back to the galaxy' }).click();
+  await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
+});

@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "data:hipparcos": "node tools/build-hipparcos.mjs",
-    "data:globulars": "node tools/build-globulars.mjs"
+    "data:globulars": "node tools/build-globulars.mjs",
+    "data:constellations": "node tools/build-constellations.mjs"
   },
   "engines": {
     "node": ">=20"

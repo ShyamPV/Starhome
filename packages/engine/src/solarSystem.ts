@@ -3,8 +3,9 @@ import {
   PLANET_IDS,
   SUN_GALACTOCENTRIC_PC,
   J2000,
-  moonGeocentricEclipticVec,
-  planetHeliocentricEcliptic,
+  earthOrientationJ2000,
+  heliocentricEquatorialKm,
+  moonGeocentricEquatorialKm,
   sampleOrbit,
   sphericalToCartesian,
   type PlanetId,
@@ -18,6 +19,7 @@ import {
   DoubleSide,
   Group,
   Line,
+  Matrix4,
   LineBasicMaterial,
   Mesh,
   MeshBasicMaterial,
@@ -45,8 +47,10 @@ const Z = new Vector3(0, 0, 1);
 const Y = new Vector3(0, 1, 0);
 
 /**
- * Sun, planets (Standish elements), Moon and orbit lines. All positions are recomputed
- * from the simulation Julian Date every frame; objects are rebased by the floating origin.
+ * Sun, planets (VSOP87), Moon (lunar theory) and orbit lines (Keplerian elements, for
+ * display). All positions are recomputed from the simulation Julian Date every frame;
+ * objects are rebased by the floating origin. The Earth turns with sidereal time, so a
+ * point on its surface faces the sky an observer there sees.
  */
 export class SolarSystem {
   readonly group = new Group();
@@ -124,20 +128,26 @@ export class SolarSystem {
 
     const earth = this.bodies.get('earth')!;
     const moon = this.bodies.get('moon')!;
-    moon.world.copy(earth.world).add(eclipticToRender(moonGeocentricEclipticVec(jd), this.scratch));
+    moon.world.copy(earth.world).add(equatorialToRender(moonGeocentricEquatorialKm(jd), this.scratch));
 
     const hours = (jd - J2000) * 24;
     for (const b of this.bodies.values()) {
+      if (b.info.id === 'earth') continue;
       // Orient local +Y to the pole, then spin about it.
       const spin = ((hours / b.info.rotationHours) % 1) * Math.PI * 2;
       b.mesh.quaternion.setFromUnitVectors(Y, b.pole).multiply(new Quaternion().setFromAxisAngle(Y, spin));
     }
+    // Earth: local +Y to the true pole, +X to the prime meridian (longitude 90 E is -Z).
+    const eo = earthOrientationJ2000(jd);
+    const y = equatorialToRender(eo.pole, new Vector3()).normalize();
+    const x = equatorialToRender(eo.primeMeridian, new Vector3()).normalize();
+    const z = new Vector3().crossVectors(x, y);
+    earth.mesh.quaternion.setFromRotationMatrix(new Matrix4().makeBasis(x, y, z));
   }
 
   private placePlanet(id: PlanetId, jd: number): void {
-    const p = planetHeliocentricEcliptic(id, jd);
     const body = this.bodies.get(id)!;
-    body.world.copy(this.sunWorld).add(eclipticToRender([p[0] * KM_PER_AU, p[1] * KM_PER_AU, p[2] * KM_PER_AU], this.scratch));
+    body.world.copy(this.sunWorld).add(equatorialToRender(heliocentricEquatorialKm(id, jd), this.scratch));
   }
 
   /** Floating origin: place everything relative to the camera. */

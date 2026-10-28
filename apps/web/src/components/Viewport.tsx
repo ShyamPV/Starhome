@@ -17,6 +17,7 @@ export function Viewport() {
       onHud: setHud,
       onSelect: setSelected,
     });
+    engine.setLocation(useApp.getState().location);
     setEngine(engine);
     // Handle for end-to-end tests and console debugging in development.
     if (import.meta.env.DEV) (window as unknown as { starhome: Engine }).starhome = engine;

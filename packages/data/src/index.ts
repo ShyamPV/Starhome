@@ -2,3 +2,5 @@ export * from './brightStars';
 export * from './solarSystem';
 export * from './hipparcos';
 export * from './globularClusters';
+export * from './constellations';
+export * from './tle';

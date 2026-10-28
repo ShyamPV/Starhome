@@ -9,6 +9,7 @@ import {
   galactocentricToLbd,
   raDecDistToGalactocentric,
   teffToLinearRgb,
+  type GeoLocation,
   type Vec3,
 } from '@starhome/astro';
 import { HIPPARCOS_COMPLETE_TO_VMAG, NAMED_STARS, NAMED_STARS_COMPLETE_TO_VMAG, loadHipparcos } from '@starhome/data';
@@ -38,6 +39,8 @@ import { CameraRig } from './cameraRig';
 import { CLUSTER_FADE_KM, GlobularClusterLayer } from './clusterLayer';
 import { ExposureMeter } from './exposure';
 import { worldKmToGalPc } from './frames';
+import { SkyMode, type SkyHud, type TonightRow, type WhereToFind } from './skyMode';
+import type { SkyLayers } from './skyView';
 import { SolarSystem } from './solarSystem';
 import { createSharedStarUniforms, createStarMaterial, setFades } from './starMaterial';
 import { GridStreamer, StarBatch, starBatchFromBuffers, type GridLayerOptions } from './starLayers';
@@ -141,7 +144,13 @@ export interface Hud {
   autoExposure: number;
   stars: { glow: number; tiles: number; cells: number; catalog: number; catalogSource: 'hipparcos' | 'named' | 'loading' };
   loading: string[];
+  view: ViewMode;
+  /** Present in the sky view: the observer, the view direction and the Sun's altitude. */
+  sky: SkyHud | null;
 }
+
+/** Fly through the Galaxy, or stand on the Earth and look up. */
+export type ViewMode = 'galaxy' | 'sky';
 
 export interface TargetSummary {
   id: string;
@@ -194,6 +203,14 @@ export class Engine {
   private readonly clusterAggregateMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 4, fadeOut: CLUSTER_FADE_KM });
   private readonly clusterStarMaterial = createStarMaterial(this.shared, { fadeIn: CLUSTER_FADE_KM });
   private readonly clusterHazeMaterial = createStarMaterial(this.shared, { soft: true, smoothingPc: 4, fadeIn: CLUSTER_FADE_KM });
+  /** Planets and satellites as points in the sky view. */
+  private readonly skyPointMaterial = createStarMaterial(this.shared);
+  readonly sky: SkyMode;
+  private viewMode: ViewMode = 'galaxy';
+  /** Daylight dimming of starlight in the sky view. */
+  private skyDim = 1;
+  /** Orbit-camera state to return to when leaving the sky view. */
+  private galaxyCamera: { distance: number; yaw: number; pitch: number } | null = null;
   private readonly sunPoint: StarBatch;
   private readonly cells: GridStreamer;
   private readonly nearTiles: GridStreamer;
@@ -218,6 +235,8 @@ export class Engine {
   private diffuseGain = 4;
   private autoExposure = 1;
   private loading = new Set<string>();
+  private readonly labelScratch = new Vector3();
+  private readonly labelScratch2 = new Vector3();
 
   jd = dateToJulian(new Date());
   timeRate = 1;
@@ -266,6 +285,8 @@ export class Engine {
       cap: q.clusterCap,
     });
     for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) this.scene.add(layer.group);
+    this.sky = new SkyMode(this.skyPointMaterial, this.solar);
+    this.scene.add(this.sky.group);
     this.applyFades();
 
     // Sgr A*: a black sphere at the event-horizon scale.
@@ -511,6 +532,75 @@ export class Engine {
     this.jd = jd;
   }
 
+  get view(): ViewMode {
+    return this.viewMode;
+  }
+
+  /** Switch between flying through the Galaxy and standing on the Earth looking up. */
+  setViewMode(mode: ViewMode): void {
+    if (mode === this.viewMode) return;
+    this.viewMode = mode;
+    const earth = this.solar.bodies.get('earth')!;
+    if (mode === 'sky') {
+      this.galaxyCamera = { distance: this.rig.distance, yaw: this.rig.yaw, pitch: this.rig.pitch };
+      this.rig.cancelFlight();
+      this.rig.mode = 'sky';
+      this.rig.skyFrame = this.sky.updateFrame(this.jd);
+      // The view from the ground: the Earth's globe would only get in the way of the horizon.
+      earth.mesh.visible = false;
+      this.sky.setActive(true);
+    } else {
+      this.rig.mode = 'orbit';
+      this.rig.skyFrame = null;
+      earth.mesh.visible = true;
+      this.sky.setActive(false);
+      this.skyDim = 1;
+      // Back above the Earth, looking down on where we stood.
+      this.rig.target.copy(earth.world);
+      this.rig.follow = () => earth.world;
+      this.rig.minDistance = earth.info.radiusKm * 1.05;
+      this.rig.distance = Math.max(this.galaxyCamera?.distance ?? 0, earth.info.radiusKm * 4);
+      if (this.galaxyCamera) {
+        this.rig.yaw = this.galaxyCamera.yaw;
+        this.rig.pitch = this.galaxyCamera.pitch;
+      }
+    }
+    this.applyFov();
+  }
+
+  get location(): GeoLocation {
+    return this.sky.location;
+  }
+
+  setLocation(loc: GeoLocation): void {
+    this.sky.location = { ...loc };
+  }
+
+  setSkyLayers(layers: Partial<SkyLayers>): void {
+    this.sky.setLayers(layers);
+  }
+
+  /** Where to find an object in the observer's sky, with rise, transit and set times. */
+  async whereToFind(id: string): Promise<WhereToFind | null> {
+    const t = this.targetById.get(id);
+    if (!t || t.id === 'earth' || t.id === 'milky-way' || t.kind === 'region') return null;
+    this.sky.updateFrame(this.jd);
+    const solarBody = t.kind === 'planet' || t.kind === 'dwarf-planet' || t.id === 'moon' || t.id === 'sun';
+    const body = solarBody ? (t.id as Parameters<SkyMode['whereToFind']>[0]['body']) : undefined;
+    return this.sky.whereToFind({ body, worldKm: t.position().clone(), mag: t.apparentMag ?? null, obscured: t.obscured }, this.jd);
+  }
+
+  /** Sun, Moon, planets and the Galactic centre for the observer, now and their next rise/set. */
+  skyTonight(): Promise<TonightRow[]> {
+    this.sky.updateFrame(this.jd);
+    return this.sky.tonight(this.jd, [0, 0, 0]);
+  }
+
+  /** Next pass of a satellite (e.g. 25544, the ISS) over the observer. */
+  satellitePass(noradId: number) {
+    return this.sky.nextPass(noradId, this.jd);
+  }
+
   getTargets(): TargetSummary[] {
     return this.targets.map((t) => this.summary(t));
   }
@@ -525,6 +615,14 @@ export class Engine {
     const t = this.targetById.get(id);
     if (!t) return;
     this.select(id);
+    if (this.viewMode === 'sky') {
+      // From the ground "going there" means turning to look at it.
+      if (t.id === 'earth') return;
+      const { alt, az } = this.sky.altAzOf(t.position());
+      // Below the horizon: face the point where it will rise rather than the ground.
+      this.rig.lookAt(alt > 0 ? alt : 12, az);
+      return;
+    }
     this.rig.minDistance = Math.max(0.001, t.radiusKm * 1.05);
     this.rig.flyTo(t.position, t.viewDistanceKm, { pitch: t.pitch });
   }
@@ -556,10 +654,19 @@ export class Engine {
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
     this.labels.setSize(w, h);
-    this.shared.uPixelsPerRadian.value = h / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.applyFov(true);
   };
+
+  /** Field of view: fixed in the galaxy view, zoomable in the sky view. */
+  private applyFov(force = false): void {
+    const fov = this.viewMode === 'sky' ? this.rig.sky.fov : 60;
+    if (!force && Math.abs(fov - this.camera.fov) < 1e-6) return;
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+    const h = this.opts.canvas.clientHeight || window.innerHeight;
+    this.shared.uPixelsPerRadian.value = h / (2 * Math.tan((fov * Math.PI) / 360));
+  }
 
   private frame = (now: number): void => {
     if (this.disposed) return;
@@ -569,11 +676,14 @@ export class Engine {
 
     if (!this.paused) this.jd += (dt * this.timeRate) / 86_400;
     this.solar.update(this.jd);
+    if (this.viewMode === 'sky') this.rig.skyFrame = this.sky.updateFrame(this.jd);
     this.rig.update(dt);
 
     const cam = this.rig.position;
+    this.applyFov();
     this.camera.quaternion.copy(this.rig.quaternion);
     this.camera.updateMatrixWorld();
+    if (this.viewMode === 'sky') this.skyDim = this.sky.update(this.jd, cam, this.camera.fov);
 
     this.solar.rebase(cam);
     this.sgrA.position.set(-cam.x, -cam.y, -cam.z);
@@ -589,12 +699,13 @@ export class Engine {
 
     // Exposure adapts to how much galactic light reaches the camera (inside vs outside).
     this.autoExposure = this.exposureMeter.update(dt, camGal, this.rig.reducedMotion);
-    this.shared.uExposure.value = this.exposure * this.autoExposure;
+    this.shared.uExposure.value = this.exposure * this.autoExposure * this.skyDim;
     // Outside the Galaxy all light is unresolved and the auto exposure already brightens
     // it, so the extra diffuse gain (an inside-the-disc perception effect) eases off.
     this.shared.uDiffuseGain.value = 1 + (this.diffuseGain - 1) / Math.max(1, this.autoExposure);
 
     this.updateLabels(cam);
+    this.cullLabelsBehindCamera();
 
     this.composer.render(dt);
     this.labels.render(this.scene, this.camera);
@@ -611,6 +722,18 @@ export class Engine {
     }
   };
 
+  /**
+   * CSS labels behind the camera would be mirrored onto the screen: with a far plane of
+   * 1e21 km their projected depth rounds to exactly 1, which the label renderer accepts.
+   */
+  private cullLabelsBehindCamera(): void {
+    const forward = this.labelScratch.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const p = this.labelScratch2;
+    this.scene.traverseVisible((o) => {
+      if (o instanceof CSS2DObject && o.getWorldPosition(p).dot(forward) <= 0) o.visible = false;
+    });
+  }
+
   private updateLabels(cam: Vector3): void {
     for (const [id, obj] of this.labelObjects) {
       const t = this.targetById.get(id)!;
@@ -619,9 +742,14 @@ export class Engine {
       const d = obj.position.length();
       // Hide when out of range, or when we're right on top of it (the body fills the view).
       // Star labels would clutter planetary-scale views.
-      const planetaryZoom = (t.kind === 'star' || t.kind === 'cluster') && id !== 'sun' && this.rig.distance < 5000 * KM_PER_AU;
-      // Spiral arms are labelled only in zoomed-out, galaxy-scale views.
-      const hidden = this.hiddenKinds.has(t.kind) || (t.kind === 'region' && this.rig.distance < ARM_LABEL_MIN_ZOOM_KM);
+      const sky = this.viewMode === 'sky';
+      const planetaryZoom = !sky && (t.kind === 'star' || t.kind === 'cluster') && id !== 'sun' && this.rig.distance < 5000 * KM_PER_AU;
+      // Spiral arms are labelled only in zoomed-out, galaxy-scale views; from the ground,
+      // nothing below the horizon is labelled.
+      const hidden =
+        this.hiddenKinds.has(t.kind) ||
+        (t.kind === 'region' && (sky || this.rig.distance < ARM_LABEL_MIN_ZOOM_KM)) ||
+        (sky && this.sky.altAzOf(p).alt < 0);
       obj.visible = !hidden && ((d < t.labelRange && d > t.radiusKm * 3 && !planetaryZoom) || this.selected?.id === id);
       if (id === 'sun') {
         const text = d > 200 * KM_PER_PC ? 'Sun · you are here' : 'Sun';
@@ -649,7 +777,8 @@ export class Engine {
     // Inside a globular cluster (within ~10 half-light radii), name the cluster as the region.
     const inCluster = nearestTarget?.kind === 'cluster' && nearest!.distanceKm < Math.max(30 * KM_PER_PC, 10 * nearestTarget.radiusKm);
     const h = this.opts.canvas.clientHeight || 1;
-    const kmPerPixel = (2 * this.rig.distance * Math.tan((this.camera.fov * Math.PI) / 360)) / h;
+    const sky = this.viewMode === 'sky';
+    const kmPerPixel = sky ? 0 : (2 * this.rig.distance * Math.tan((this.camera.fov * Math.PI) / 360)) / h;
     const pendingTiles = this.nearTiles.pending + this.farTiles.pending;
     return {
       jd: this.jd,
@@ -681,6 +810,8 @@ export class Engine {
         ...(pendingTiles > 0 ? [`Galaxy tiles (${pendingTiles})`] : []),
         ...(this.clusters.pending > 0 ? ['Cluster stars'] : []),
       ],
+      view: this.viewMode,
+      sky: sky ? this.sky.hud(this.rig.sky.alt, this.rig.sky.az, this.rig.sky.fov) : null,
     };
   }
 
@@ -691,6 +822,7 @@ export class Engine {
     this.rig.dispose();
     this.pool.dispose();
     for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) layer.dispose();
+    this.sky.dispose();
     this.glow?.dispose();
     this.catalog?.dispose();
     this.shared.uDustMap.value.dispose();

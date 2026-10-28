@@ -4,9 +4,9 @@ A scientifically grounded, fully explorable 3D model of the Milky Way in the bro
 You can fly from a planet's surface out to a view of the whole barred spiral, with
 stars rendered everywhere, not just around the Sun.
 
-> Status: **deliverable 2 of 7** (whole-galaxy model: level-of-detail shells, 3D dust and
-> extinction, globular clusters, inside/outside exposure). See [docs/PLAN.md](docs/PLAN.md)
-> for the roadmap, the rendering approach and the risks.
+> Status: **deliverable 3 of 7** (precise ephemerides, the live sky from anywhere on Earth,
+> constellations, satellites, rise/set times). See [docs/PLAN.md](docs/PLAN.md) for the
+> roadmap, the rendering approach and the risks.
 
 ## Quick start
 
@@ -17,6 +17,7 @@ pnpm test                # Vitest: astro math + galaxy-model statistics
 pnpm test:e2e            # Playwright smoke tests (uses local Edge by default)
 pnpm data:hipparcos      # optional: download Hipparcos (~118k real stars)
 pnpm data:globulars      # rebuild the bundled Harris globular-cluster table
+pnpm data:constellations # rebuild the bundled constellation lines and names
 ```
 
 Controls: drag to orbit, right-drag to pan, use the wheel to zoom (logarithmic). Fly
@@ -24,20 +25,31 @@ with W A S D, R/F for up/down, Shift for ×5. Ctrl/Cmd+K opens search. Double-cl
 label to travel there. The Galaxy panel toggles dust, globular clusters and spiral-arm
 labels; Settings has exposure and Milky Way glow (diffuse light) sliders.
 
+**Sky view** (Sky tab, *Look up from Earth*): stand at your location (or any latitude and
+longitude, or an observatory preset) and see the sky at the simulation time, with the
+daylight and twilight sky, constellations, the Galactic equator, planets, the Moon and
+Earth satellites. Drag to look around, scroll to change the field of view, W A S D to
+turn; search turns the view toward an object. The Sky tab lists what is up tonight and
+the next ISS pass; every object's panel shows where to find it and when it rises and
+sets. Your location is remembered in this browser only.
+
 ## Repository layout
 
 ```
 apps/web          React + Vite + Tailwind UI (Zustand state)
 packages/astro    Pure, tested astronomy math: units, time, ICRS/ecliptic/Galactic/
-                  Galactocentric frames, Kepler orbits, Moon, photometry
+                  Galactocentric frames, ephemerides (VSOP87, lunar theory), observer
+                  alt/az and rise/set, SGP4 satellites, photometry
 packages/galaxy   Galaxy model (arms, bar, discs, halo, satellites), light model, 3D dust,
                   seeded RNG, population synthesis, star/tile/cluster generators,
                   Web Worker pool
 packages/engine   three.js renderer: floating origin, star shader with per-star
                   extinction, level-of-detail shells, globular clusters, auto exposure,
-                  camera rig, solar system, bloom + tone mapping, labels
+                  camera rig, solar system, sky view (horizon, daylight sky, grids,
+                  constellations, planets and satellites), sky worker, bloom + tone
+                  mapping, labels
 packages/data     Named-star seed catalogue, Solar System data, Hipparcos loader,
-                  Harris globular-cluster catalogue
+                  Harris globular-cluster catalogue, constellations, CelesTrak TLE loader
 tools             Catalogue preprocessing scripts (Node)
 e2e               Playwright tests
 ```
@@ -46,8 +58,13 @@ e2e               Playwright tests
 
 | Shown | Source | Real or modeled |
 |-------|--------|-----------------|
-| Sun, planets, Pluto | JPL approximate Keplerian elements (Standish), J2000 | Real ephemeris (low precision, arc-minutes) |
-| Moon | Astronomical Almanac short series | Real ephemeris (about 0.3°) |
+| Sun, planets, Pluto | VSOP87 via astronomy-engine | Real ephemeris (better than 1′) |
+| Moon | Lunar theory via astronomy-engine | Real ephemeris (better than 1′) |
+| Orbit lines | JPL approximate Keplerian elements (Standish) | Real (display only) |
+| Sky positions, rise/transit/set times | IAU 2006/2000B precession-nutation, refraction (astronomy-engine) | Real |
+| Satellites | CelesTrak two-line elements, SGP4 | Real (a few km; brightness is a rough estimate) |
+| Constellation lines | IAU charts via d3-celestial | Real (conventional figures) |
+| Daylight and twilight sky colours | Simple analytic sky model | **Modeled** (illustrative) |
 | Named stars (V < 2 plus notable stars) | SIMBAD / Hipparcos values, rounded | Real |
 | Hipparcos stars (after `pnpm data:hipparcos`) | ESA Hipparcos (I/239) + new reduction (I/311) | Real |
 | All other individual stars | Population synthesis from the Galaxy model | **Modeled** |
@@ -98,6 +115,14 @@ the catalogue has them.
   Cardelli, Clayton & Mathis 1989 (extinction law, R_V = 3.1); Flynn et al. 2006 (local
   disc luminosity).
 - NASA Planetary Fact Sheets; IAU WGCCRE 2015 rotation elements.
+- astronomy-engine by Don Cross (MIT): VSOP87 (Bretagnon & Francou 1988), lunar theory,
+  IAU 2006 precession, IAU 2000B nutation, rise/set searches, constellation boundaries.
+- satellite.js (MIT): SGP4/SDP4 after Vallado, Crawford, Hujsak & Kelso 2006,
+  *Revisiting Spacetrack Report #3*. Orbital elements from CelesTrak (T. S. Kelso),
+  cached for 4 hours as CelesTrak asks.
+- Constellation lines and names: d3-celestial, Copyright (c) 2015, Olaf Frohn, BSD-3-Clause
+  (lines after the IAU constellation charts). The full licence notice is reproduced in
+  `packages/data/src/constellations.json`.
 
 ## Licence
 

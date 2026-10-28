@@ -29,6 +29,10 @@ export interface Target {
   labelRange: number;
   /** Fixed Galactocentric position (pc) for objects outside the Solar System. */
   galPc?: Vec3;
+  /** Apparent V magnitude from Earth, for objects outside the Solar System. */
+  apparentMag?: number;
+  /** Invisible to the eye whatever its brightness (hidden behind dust). */
+  obscured?: boolean;
 }
 
 const SGR_A_STAR_RS_KM = 1.27e7; // Schwarzschild radius for 4.3e6 M_sun
@@ -98,6 +102,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       },
       labelRange: s.vmag < 1.5 ? 1500 * KM_PER_PC : 300 * KM_PER_PC,
       galPc,
+      apparentMag: s.vmag,
     });
   }
 
@@ -134,6 +139,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       details,
       labelRange: labelKpc * KM_PER_KPC,
       galPc,
+      apparentMag: c.vt ?? undefined,
     });
   }
 
@@ -191,6 +197,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
     ],
     details: { Mass: '4.3 × 10⁶ M☉', 'Schwarzschild radius': '1.27 × 10⁷ km (0.08 AU)', Distance: '8.18 kpc (26,700 ly)' },
     labelRange: 60 * KM_PER_KPC,
+    obscured: true,
   });
 
   targets.push({
