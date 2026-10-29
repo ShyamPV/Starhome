@@ -1,5 +1,5 @@
 import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, SUN_GALACTOCENTRIC_PC, absoluteMagnitude, raDecDistToGalactocentric, starPhysics, type LifeStage, type Vec3 } from '@starhome/astro';
-import { COMPACT_OBJECTS, GLOBULAR_CLUSTERS, MOON, MOON_ELEMENTS_SOURCE, NAMED_STARS, PLANETS, SUN, type NamedStar } from '@starhome/data';
+import { COMPACT_OBJECTS, GLOBULAR_CLUSTERS, MOON, MOON_ELEMENTS_SOURCE, NAMED_STARS, PLANETS, SUN, type CompactObject, type NamedStar } from '@starhome/data';
 import { NEBULAE, SATELLITES, SPIRAL_ARMS, armRadius, isModeledArmSegment, xyFromRBeta } from '@starhome/galaxy';
 import { Vector3 } from 'three';
 import { galPcToWorldKm } from './frames';
@@ -50,11 +50,14 @@ export interface Target {
   obscured?: boolean;
   /** Catalogue star: physical parameters are derived (with modeled extinction) for the details. */
   star?: NamedStar;
+  /** Neutron star or black hole, with what to draw up close. */
+  compact?: CompactObject;
 }
 
 const GALILEAN_A_KM: Record<string, number> = { io: 421_800, europa: 671_100, ganymede: 1_070_400, callisto: 1_882_700 };
 const GALILEAN_PERIOD_DAYS: Record<string, number> = { io: 1.769138, europa: 3.551181, ganymede: 7.154553, callisto: 16.689018 };
 const SOLAR_SYSTEM_SOURCE = 'Positions: astronomy-engine (VSOP87, lunar theory). Physical data: NASA Planetary Fact Sheets. Rotation: IAU WGCCRE.';
+const SURFACE_IMPRESSION = ' Surface: an impression generated from its known features (no global map is bundled).';
 const MAP_CREDIT = ' Surface map: Solar System Scope (CC BY 4.0), from NASA imagery.';
 const SGR_A_STAR_RS_KM = 1.27e7; // Schwarzschild radius for 4.3e6 M_sun
 
@@ -120,7 +123,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: info.radiusKm,
       viewDistanceKm: info.radiusKm * (info.ring ? 9 : 5),
       provenance: 'ephemeris',
-      source: SOLAR_SYSTEM_SOURCE + (info.texture ? MAP_CREDIT : ' Drawn in a display colour (no surface map).'),
+      source: SOLAR_SYSTEM_SOURCE + (info.texture ? MAP_CREDIT : SURFACE_IMPRESSION),
       facts: info.facts,
       details: { Radius: `${info.radiusKm.toLocaleString('en-US')} km`, 'Rotation period': `${Math.abs(info.rotationHours).toFixed(2)} h${info.rotationHours < 0 ? ' (retrograde)' : ''}` },
       labelRange: info.id === 'moon' ? 0.05 * KM_PER_AU : 400 * KM_PER_AU,
@@ -140,9 +143,10 @@ export function buildTargets(ss: SolarSystem): Target[] {
       subtitle: `${s.spectralType} · ${STAGE_LABEL[phys.stage]} · ${s.constellation}`,
       position: fixed(world),
       radiusKm: 695_700 * phys.radiusSun,
-      viewDistanceKm: 2 * KM_PER_AU,
+      // Close enough to see the star as a disc (Betelgeuse is wider than Mars' orbit).
+      viewDistanceKm: Math.max(695_700 * phys.radiusSun * 6, 30_000),
       provenance: 'catalog',
-      source: 'SIMBAD and Hipparcos (van Leeuwen 2007). Temperature, size and mass derived on the Pecaut & Mamajek (2013) scale.',
+      source: 'SIMBAD and Hipparcos (van Leeuwen 2007). Temperature, size and mass derived on the Pecaut & Mamajek (2013) scale; up close it is drawn at that size and colour.',
       facts: s.note ? [s.note] : [],
       details: {
         Designation: s.designation,
@@ -172,13 +176,15 @@ export function buildTargets(ss: SolarSystem): Target[] {
       kind: 'moon',
       subtitle: `Moon of ${PARENT_NAME[m.parent]}`,
       position: () => s.world,
-      radiusKm: m.radiusKm,
+      // The long axis sets how close the camera may come.
+      radiusKm: m.shapeKm ? m.shapeKm[0] : m.radiusKm,
       viewDistanceKm: m.radiusKm * 6,
       provenance: 'ephemeris',
-      source: fitted ? `Orbit: ${MOON_ELEMENTS_SOURCE} Radius: JPL physical parameters.` : 'Orbit: L1.2 theory (Lieske) via astronomy-engine. Radius: JPL physical parameters.',
-      facts: [...m.facts, 'Drawn in a single display colour: no surface map is included for this moon.'],
+      source: `${fitted ? `Orbit: ${MOON_ELEMENTS_SOURCE}` : 'Orbit: L1.2 theory (Lieske) via astronomy-engine.'} Size: JPL physical parameters${m.shapeKm ? ' and IAU WGCCRE 2015 (shape)' : ''}.${SURFACE_IMPRESSION}`,
+      facts: [...m.facts, m.shapeKm ? `Shape: an ellipsoid with its measured dimensions (${m.shapeKm.map((r) => (2 * r).toFixed(1)).join(' × ')} km), roughened; the surface is an impression, not a map.` : 'The surface is an impression generated from its known features, not a map.'],
       details: {
-        Radius: `${m.radiusKm.toLocaleString('en-US')} km`,
+        ...(m.shapeKm ? { Dimensions: `${m.shapeKm.map((r) => (2 * r).toFixed(1)).join(' × ')} km` } : {}),
+        [m.shapeKm ? 'Mean radius' : 'Radius']: `${m.radiusKm.toLocaleString('en-US')} km`,
         'Orbit radius': `${Math.round(aKm).toLocaleString('en-US')} km`,
         'Orbital period': `${periodDays < 2 ? `${(periodDays * 24).toFixed(1)} hours` : `${periodDays.toFixed(2)} days`}${fitted && fitted.iDeg > 90 ? ' (retrograde)' : ''}`,
         Rotation: 'Synchronous (always the same face to its planet)',
@@ -199,10 +205,17 @@ export function buildTargets(ss: SolarSystem): Target[] {
       subtitle: `${bh ? 'Stellar black hole' : c.kind === 'magnetar' ? 'Magnetar' : 'Pulsar'} · ${c.constellation}`,
       position: fixed(galPcToWorldKm(galPc)),
       radiusKm: bh ? 60 : 12,
-      viewDistanceKm: 0.5 * KM_PER_AU,
+      // Neutron stars: close enough to see a 12 km star. Black holes: the whole binary in view.
+      viewDistanceKm: 'bhMassSun' in c.closeUp ? c.closeUp.companion.sepAu * 2.4 * KM_PER_AU : 150,
       provenance: 'catalog',
       source: `Distance: ${c.distanceSource}. Position: SIMBAD.`,
-      facts: c.facts,
+      facts: [
+        ...c.facts,
+        'bhMassSun' in c.closeUp
+          ? `Up close: the black hole itself (${Math.round(c.closeUp.bhMassSun * 5.9)} km across) cannot be seen; its companion star is drawn at its measured size on its real orbit${c.closeUp.disk ? ', with an illustrative accretion disc' : ''}.`
+          : `Up close: drawn at its real size, about 24 km across${c.closeUp.beams ? '; the beams are an illustration, slowed down from its true spin' : ''}.`,
+      ],
+      compact: c,
       details: {
         Designation: c.designation,
         Type: bh ? 'Black hole in a binary' : c.kind === 'magnetar' ? 'Magnetar (neutron star)' : 'Pulsar (neutron star)',
@@ -352,6 +365,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
     provenance: 'catalog',
     source: 'GRAVITY Collaboration 2019; Event Horizon Telescope Collaboration 2022.',
     facts: [
+      'Up close the glowing ring is drawn after the Event Horizon Telescope image: about five times the event horizon radius across.',
       'About 4.3 million solar masses (GRAVITY Collaboration, Event Horizon Telescope).',
       'Imaged by the Event Horizon Telescope in 2022.',
       'The star S2 orbits it every 16 years, coming within ~120 AU.',

@@ -15,7 +15,11 @@ one was built, the rendering approach, the risks and what is not done yet.
   clusters and satellite galaxies, dimmed and reddened by 3D dust. Zoom continuously from
   a planet to the whole disc; warp to anything with a speed read-out in multiples of c.
 - **The Solar System** with real positions (VSOP87 and lunar theory), surface maps, rings,
-  IAU rotation models and 20 major moons on orbits fitted to JPL's ephemerides.
+  IAU rotation models and 20 major moons on orbits fitted to JPL's ephemerides (Phobos and
+  Deimos in their real lumpy shapes).
+- **Stars and stellar remnants up close:** every named star as a glowing disc at its size
+  and colour (Betelgeuse with its giant convection cells), pulsars at their real 24 km,
+  black holes with their companion stars on their real orbits.
 - **Nebulae in 3D** (19 objects, from the Orion Nebula to the Crab), raymarched as volumes
   you can fly through, plus the nearby dust clouds of the Gould Belt.
 - **Stars** with temperatures, sizes and life stages, white dwarfs, pulsars, a magnetar and
@@ -122,7 +126,11 @@ e2e               Playwright tests
 | 16 other major moons | Mean elements fitted to JPL Horizons, 2000–2050 | Real (within 2° along the orbit; each moon's panel gives its own figure) |
 | Rotation and orientation of the Sun, planets and Moon | IAU WGCCRE models; the Earth by sidereal time | Real (periodic terms omitted) |
 | Surface maps of the Sun, planets and Moon | Solar System Scope, based on NASA imagery | Real imagery (Venus shows its cloud tops) |
-| Other moons' surfaces | Single display colour | **Placeholder** |
+| Surfaces of the other moons and Pluto | Generated from known features (named craters such as Stickney and Herschel, Iapetus' dark side, Enceladus' tiger stripes, Pluto's heart) | **Impression**, not a map |
+| Shapes of Phobos and Deimos | Measured triaxial dimensions (IAU WGCCRE 2015), roughened | Real size and shape; relief **modeled** |
+| Stars up close | Sphere at the estimated radius and temperature, limb darkening, convection cells | Real size and colour; surface **modeled** |
+| Neutron stars and black-hole binaries up close | Real size, companion size and orbit; pulsar beams and accretion discs drawn | Real scale; beams and discs are **illustrations** |
+| Ring around Sagittarius A* | After the Event Horizon Telescope image (about 5 event-horizon radii across) | **Illustration** |
 | Orbit lines | JPL approximate Keplerian elements (Standish); moons from their own models | Real (display only) |
 | Sky positions, rise/transit/set times | IAU 2006/2000B precession-nutation, refraction (astronomy-engine) | Real |
 | Satellites | CelesTrak two-line elements, SGP4 | Real (a few km; brightness is a rough estimate) |

@@ -159,12 +159,32 @@ licensing decision), atmospheric extinction near the horizon, and light pollutio
   replaces a blank screen when WebGL 2 is missing; an offline notice; the README is now
   the complete user and attribution document.
 
+### After deliverable 7: no empty arrivals
+
+A sweep flying to one object of every kind found places with nothing to see on arrival.
+
+- **Moons and Pluto** without a bundled map now get generated surfaces, using their named
+  features at catalogued positions. **Phobos and Deimos** take their measured triaxial
+  shapes, with the long axis toward Mars.
+- **Named stars** faded to nothing inside a few thousand AU (the catalogue point hands over
+  to a planetary system's star, which only hosts had), and arrived at 2 AU, which is inside
+  Betelgeuse. They now draw as spheres at their estimated size and colour, and arrive at a
+  few radii.
+- **Neutron stars and black holes** draw at their real size, the latter with their
+  companion on its real orbit and, where they feed, an accretion disc. Sagittarius A* has
+  its photon ring.
+- **Bugs found on the way:** Proxima's planets were attached to Alpha Centauri A (the host
+  match took the first named star in range, not the nearest). Sirius B and Procyon B
+  shared their primaries' coordinates, so the camera arrived inside Sirius A. Both are
+  fixed and covered by tests.
+
 ## What is not done yet
 
 - Gaia DR3 regional tiles streamed on demand (the brief's real-star tiles beyond
   Hipparcos); the synthetic galaxy fills those regions and is marked as modeled.
 - Constellation art (figures need a permissively licensed set or our own drawings).
-- Images per object in the Explore hub, and surface maps for moons other than our own.
+- Images per object in the Explore hub, and real global maps for the moons other than our
+  own (they have generated impressions).
 - Refreshing the exoplanet snapshot automatically (needs a server or CI job).
 - Binary-star orbits (Kepler-16 is drawn as one star) and exoplanet moons.
 - "Visible tonight" times in the observer's own time zone rather than the browser's.

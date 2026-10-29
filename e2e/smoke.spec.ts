@@ -175,6 +175,16 @@ test('solar system: major moons with their orbit accuracy and sources', async ({
   await page.keyboard.type('Mars');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('complementary', { name: 'Mars details' })).toContainText('Solar System Scope (CC BY 4.0)');
+  // Irregular moons take their measured shape; black holes show their companion.
+  for (const [q, name, text] of [
+    ['Phobos', 'Phobos details', '26.0 × 22.8 × 18.2 km'],
+    ['Cygnus X-1', 'Cygnus X-1 details', 'companion star is drawn at its measured size'],
+  ] as const) {
+    await page.keyboard.press('Control+K');
+    await page.keyboard.type(q);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('complementary', { name })).toContainText(text);
+  }
   await page.keyboard.press('Escape');
   await expect(page.getByRole('complementary', { name: 'Mars details' })).toBeHidden();
 });

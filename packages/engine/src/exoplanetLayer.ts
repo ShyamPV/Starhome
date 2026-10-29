@@ -29,6 +29,7 @@ import {
 } from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GAL_PC_BASIS, galPcToWorldKm, galToRender } from './frames';
+import { convectionFor, createStarSurfaceMaterial } from './closeUps';
 import { createPlanetMaterial } from './planetMaterial';
 import { StarBatch } from './starLayers';
 import type { Target } from './targets';
@@ -218,8 +219,17 @@ export class ExoplanetLayer {
 
     withDist.forEach((h, i) => {
       const archivePc = raDecDistToGalactocentric(h.ra, h.dec, h.distPc!);
-      // Is this host one of our named stars? (Same direction and distance within 10%.)
-      const alias = named.find(({ s, p }) => Math.hypot(p[0] - archivePc[0], p[1] - archivePc[1], p[2] - archivePc[2]) < 0.1 * s.distPc + 0.05);
+      // Is this host one of our named stars? (Same direction and distance within 10%.) Take the
+      // closest match: Proxima lies within that tolerance of Alpha Centauri A and B.
+      let alias: (typeof named)[number] | undefined;
+      let aliasD = Infinity;
+      for (const n of named) {
+        const d = Math.hypot(n.p[0] - archivePc[0], n.p[1] - archivePc[1], n.p[2] - archivePc[2]);
+        if (d < 0.1 * n.s.distPc + 0.05 && d < aliasD) {
+          alias = n;
+          aliasD = d;
+        }
+      }
       // One star, one position: small catalogue differences are hundreds of AU at these distances.
       const galPc = alias ? alias.p : archivePc;
       const inc = h.planets.find((p) => p.incDeg !== null)?.incDeg ?? 60;
@@ -472,10 +482,8 @@ class SystemView {
   ) {
     const h = entry.host;
     const f = entry.frame;
-    const star = new Mesh(
-      new SphereGeometry((h.radiusSun ?? 1) * R_SUN_KM, 48, 24),
-      new MeshBasicMaterial({ color: new Color(...entry.starColor.toArray()).multiplyScalar(6) }),
-    );
+    const teff = h.teffK ?? 5000;
+    const star = new Mesh(new SphereGeometry((h.radiusSun ?? 1) * R_SUN_KM, 96, 48), createStarSurfaceMaterial(teff, convectionFor(h.radiusSun ?? 1, teff)));
     this.group.add(star);
 
     // Habitable zone: a very faint band in the orbital plane, outlined at its edges.

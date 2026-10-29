@@ -52,6 +52,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { CameraRig } from './cameraRig';
+import { CloseUps, photonRing, type CloseUpSubject } from './closeUps';
 import { CLUSTER_FADE_KM, GlobularClusterLayer } from './clusterLayer';
 import { ExposureMeter } from './exposure';
 import { ExoplanetLayer } from './exoplanetLayer';
@@ -288,6 +289,9 @@ export class Engine {
   readonly sky: SkyMode;
   private readonly nebulae: NebulaLayer;
   readonly exoplanets: ExoplanetLayer;
+  /** Stars and compact objects drawn as what they are once the camera is close. */
+  private readonly closeUps = new CloseUps();
+  private readonly closeUpSubjects: (CloseUpSubject & { rangeKm: number })[] = [];
   private viewMode: ViewMode = 'galaxy';
   /** Daylight dimming of starlight in the sky view. */
   private skyDim = 1;
@@ -388,8 +392,10 @@ export class Engine {
     // Sgr A*: a black sphere at the event-horizon scale.
     const sgrA = new Mesh(new SphereGeometry(1.27e7, 48, 24), new MeshBasicMaterial({ color: 0x000000 }));
     sgrA.name = 'sgr-a-star';
+    sgrA.add(photonRing(1.27e7));
     this.scene.add(sgrA);
     this.sgrA = sgrA;
+    this.scene.add(this.closeUps.group);
 
     const sunRgb = teffToLinearRgb(5772).map((c) => Math.round(c * 255));
     this.sunPoint = new StarBatch(
@@ -404,6 +410,14 @@ export class Engine {
     for (const t of this.targets) {
       this.targetById.set(t.id, t);
       if (t.labelRange > 0) this.addLabel(t);
+      if (t.star) {
+        const teffK = starPhysics(t.star.vmag, t.star.distPc, t.star.bv, t.star.spectralType).teffK;
+        // Catalogue points fade out inside a few thousand AU: the sphere takes over from there.
+        this.closeUpSubjects.push({ id: t.id, position: t.position, star: { teffK, radiusKm: t.radiusKm }, rangeKm: Math.max(3000 * KM_PER_AU, t.radiusKm * 1e4) });
+      } else if (t.compact) {
+        const cu = t.compact.closeUp;
+        this.closeUpSubjects.push({ id: t.id, position: t.position, compact: t.compact, rangeKm: 'bhMassSun' in cu ? cu.companion.sepAu * 400 * KM_PER_AU : 1e7 });
+      }
     }
 
     this.solar.update(this.jd);
@@ -986,6 +1000,22 @@ export class Engine {
     return { ...this.brief(t, this.solar.bodies.get('earth')!.world), details };
   }
 
+  /** The star or compact object close enough to draw as itself (a planetary system draws its own star). */
+  private closeUpSubject(cam: Vector3): CloseUpSubject | null {
+    const systemStar = this.exoplanets.activeSystem ? this.exoplanets.targetIdOf(this.exoplanets.activeSystem.id) : null;
+    let best: CloseUpSubject | null = null;
+    let bestD = Infinity;
+    for (const s of this.closeUpSubjects) {
+      if (s.id === systemStar) continue;
+      const d = s.position().distanceTo(cam);
+      if (d < s.rangeKm && d < bestD) {
+        bestD = d;
+        best = s;
+      }
+    }
+    return best;
+  }
+
   // --- Frame loop -------------------------------------------------------------------
 
   private applyPixelSizes(): void {
@@ -1051,6 +1081,7 @@ export class Engine {
     this.shared.uDiffuseGain.value = 1 + (this.diffuseGain - 1) / Math.max(1, this.autoExposure);
     this.exoplanets.jd = this.jd;
     this.exoplanets.update(cam, this.selected?.id ?? null);
+    this.closeUps.update(this.viewMode === 'galaxy' ? this.closeUpSubject(cam) : null, cam, this.jd);
     this.nebulae.update(cam, camGal, this.shared.uPixelsPerRadian.value, this.renderer.getPixelRatio(), QUALITY[this.quality].nebulaSteps);
 
     this.updateLabels(cam);
@@ -1188,6 +1219,7 @@ export class Engine {
     this.solar.dispose();
     this.nebulae.dispose();
     this.exoplanets.dispose();
+    this.closeUps.update(null, this.rig.position, this.jd);
     this.glow?.dispose();
     this.catalog?.dispose();
     this.shared.uDustMap.value.dispose();

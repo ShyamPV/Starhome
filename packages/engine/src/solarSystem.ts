@@ -40,6 +40,7 @@ import {
   type Texture,
 } from 'three';
 import { eclipticToRender, equatorialToRender, galPcToWorldKm } from './frames';
+import { SurfaceModel } from './moonSurface';
 
 export interface Body {
   info: BodyInfo;
@@ -85,6 +86,9 @@ export class SolarSystem {
   private readonly basis = new Matrix4();
   private textureBase: string | null = null;
   private readonly textureJobs = new Map<string, () => void>();
+  /** Generated surfaces, run one per tick so a moon system does not stall a frame. */
+  private readonly generateQueue: (() => void)[] = [];
+  private generating = false;
   private readonly loader = new TextureLoader();
 
   constructor() {
@@ -108,12 +112,15 @@ export class SolarSystem {
         material.color.set(0xffffff);
         material.needsUpdate = true;
       });
+      if (info.surface) this.onGenerated(info.id, new SurfaceModel(info.id, info.surface, info.color, seedOf(info.id)), body.mesh, material);
       if (info.id === 'earth') this.addEarthDetail(body, material);
       if (info.ring) this.addRing(body, info.ring);
     }
 
     for (const info of MOONS) {
-      const mesh = new Mesh(smallSphere, new MeshStandardMaterial({ color: info.color, roughness: 0.95, metalness: 0 }));
+      const material = new MeshStandardMaterial({ color: info.color, roughness: 0.95, metalness: 0 });
+      const mesh = new Mesh(smallSphere, material);
+      this.onGenerated(info.id, new SurfaceModel(info.id, info.surface, info.color, seedOf(info.id)), mesh, material, info.shapeKm, info.radiusKm);
       mesh.scale.setScalar(info.radiusKm);
       mesh.name = info.id;
       const world = new Vector3();
@@ -142,6 +149,37 @@ export class SolarSystem {
         apply(t);
       }),
     );
+  }
+
+  /** A generated surface (and, for irregular moons, shape), built when the camera comes close. */
+  private onGenerated(key: string, model: SurfaceModel, mesh: Mesh, material: MeshStandardMaterial, shapeKm?: [number, number, number], meanKm?: number): void {
+    this.textureJobs.set(key, () =>
+      this.enqueue(() => {
+        const { map, bump } = model.textures(shapeKm ? 512 : 768);
+        material.map = map;
+        material.bumpMap = bump;
+        material.bumpScale = 2;
+        material.color.set(0xffffff);
+        material.needsUpdate = true;
+        if (shapeKm && meanKm) mesh.geometry = model.geometry(shapeKm, meanKm);
+      }),
+    );
+  }
+
+  private enqueue(job: () => void): void {
+    this.generateQueue.push(job);
+    if (this.generating) return;
+    this.generating = true;
+    const pump = () => {
+      const next = this.generateQueue.shift();
+      if (!next) {
+        this.generating = false;
+        return;
+      }
+      next();
+      setTimeout(pump, 0);
+    };
+    setTimeout(pump, 0);
   }
 
   /** Night lights on the dark side and a cloud layer. */
@@ -346,7 +384,7 @@ export class SolarSystem {
       m.group.visible = this.orbitsOn && planet.world.distanceTo(cameraKm) < m.reachKm * MOON_ORBIT_RANGE;
     }
     if (this.textureBase && this.textureJobs.size) {
-      for (const b of this.bodies.values()) {
+      for (const b of [...this.bodies.values(), ...this.satellites.values()]) {
         if (b.world.distanceTo(cameraKm) > b.info.radiusKm * TEXTURE_RANGE_RADII) continue;
         for (const [key, job] of this.textureJobs) {
           if (key !== b.info.id && !key.startsWith(`${b.info.id}-`)) continue;
@@ -363,6 +401,12 @@ export class SolarSystem {
       if (m && 'map' in m) (m as MeshStandardMaterial).map?.dispose();
     });
   }
+}
+
+function seedOf(id: string): number {
+  let h = 2_166_136_261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16_777_619);
+  return h >>> 0;
 }
 
 /** Sidereal periods of the Galilean moons, days (for drawing their orbits). */

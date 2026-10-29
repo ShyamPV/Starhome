@@ -46,3 +46,20 @@ describe('TLE parsing', () => {
     expect(tles[1]!.line2.startsWith('2 48274')).toBe(true);
   });
 });
+
+describe('named stars as 3D bodies', () => {
+  it('never puts two stars inside each other (companions are offset from their primaries)', async () => {
+    const { NAMED_STARS } = await import('../src');
+    const { raDecDistToGalactocentric, starPhysics } = await import('@starhome/astro');
+    const AU_PER_PC = 206_264.8;
+    const R_SUN_AU = 0.00465;
+    const stars = NAMED_STARS.map((s) => ({ s, p: raDecDistToGalactocentric(s.ra, s.dec, s.distPc), r: starPhysics(s.vmag, s.distPc, s.bv, s.spectralType).radiusSun * R_SUN_AU }));
+    for (let i = 0; i < stars.length; i++)
+      for (let j = i + 1; j < stars.length; j++) {
+        const a = stars[i]!;
+        const b = stars[j]!;
+        const dAu = Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1], a.p[2] - b.p[2]) * AU_PER_PC;
+        expect(dAu, `${a.s.id} / ${b.s.id}`).toBeGreaterThan(3 * (a.r + b.r));
+      }
+  });
+});

@@ -83,9 +83,11 @@ export const NAMED_STARS: readonly NamedStar[] = [
   { id: 'eta-carinae', name: 'Eta Carinae', designation: 'η Car', ra: 161.2648, dec: -59.6845, distPc: 2300, vmag: 4.3, bv: 0.61, spectralType: 'LBV', constellation: 'Carina', note: 'Luminous blue variable binary; underwent the "Great Eruption" in the 1840s.' },
   { id: 'vy-cma', name: 'VY Canis Majoris', designation: 'VY CMa', ra: 110.743, dec: -25.7675, distPc: 1170, vmag: 7.9, bv: 2.24, spectralType: 'M3-5e Ia', constellation: 'Canis Major', note: 'One of the largest known stars by radius.' },
   { id: 'uy-scuti', name: 'UY Scuti', designation: 'UY Sct', ra: 276.9028, dec: -12.4664, distPc: 2900, vmag: 11.2, bv: 3.0, spectralType: 'M4Ia', constellation: 'Scutum', note: 'Red supergiant; radius estimates have ranged widely.' },
-  // Nearby white dwarfs (spectral type number = 50400 / Teff).
-  { id: 'sirius-b', name: 'Sirius B', designation: 'α CMa B', ra: 101.2872, dec: -16.7161, distPc: 2.64, vmag: 8.44, bv: -0.03, spectralType: 'DA2', constellation: 'Canis Major', note: 'The nearest white dwarf: about the Sun’s mass packed into a sphere the size of the Earth. Companion of Sirius A, every 50 years.' },
-  { id: 'procyon-b', name: 'Procyon B', designation: 'α CMi B', ra: 114.8255, dec: 5.225, distPc: 3.51, vmag: 10.7, bv: 0.0, spectralType: 'DQZ6.5', constellation: 'Canis Minor', note: 'White-dwarf companion of Procyon A, orbiting every 41 years.' },
+  // Nearby white dwarfs (spectral type number = 50400 / Teff). Sirius B and Procyon B sit at
+  // their measured separations from their primaries (~11″ and ~4.5″, about 29 and 16 AU);
+  // the direction is approximate and their orbits are not modelled.
+  { id: 'sirius-b', name: 'Sirius B', designation: 'α CMa B', ra: 101.2902, dec: -16.715, distPc: 2.64, vmag: 8.44, bv: -0.03, spectralType: 'DA2', constellation: 'Canis Major', note: 'The nearest white dwarf: about the Sun’s mass packed into a sphere the size of the Earth. Companion of Sirius A, every 50 years.' },
+  { id: 'procyon-b', name: 'Procyon B', designation: 'α CMi B', ra: 114.8264, dec: 5.2259, distPc: 3.51, vmag: 10.7, bv: 0.0, spectralType: 'DQZ6.5', constellation: 'Canis Minor', note: 'White-dwarf companion of Procyon A, orbiting every 41 years.' },
   { id: '40-eri-b', name: '40 Eridani B', designation: 'ο² Eri B', ra: 63.818, dec: -7.653, distPc: 5.01, vmag: 9.52, bv: 0.03, spectralType: 'DA2.9', constellation: 'Eridanus', note: 'The easiest white dwarf to see in a small telescope; one of the first identified (1910).' },
   { id: 'van-maanen-2', name: "van Maanen's Star", designation: 'van Maanen 2', ra: 12.291, dec: 5.389, distPc: 4.31, vmag: 12.37, bv: 0.55, spectralType: 'DZ7.5', constellation: 'Pisces', note: 'The nearest solitary white dwarf; metals in its atmosphere are the remains of planetary debris it swallowed.' },
   // Stars embedded in nebulae (distances are their clusters': Orion Nebula Cluster, Pleiades).
