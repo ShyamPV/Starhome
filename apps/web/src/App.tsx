@@ -29,12 +29,15 @@ export function App() {
         </div>
         <footer className="mt-3 flex items-end justify-between gap-4">
           <Hud />
+          {/* The column grows upward, so the tour sits just above the time bar: status pills
+              that come and go (tiles generating, warping) appear above it rather than
+              pushing it around. */}
           <div className="flex flex-col items-center gap-2">
-            <TourPlayer />
             <AppNotices />
             <Toast />
             <WarpPill />
             <LoadingPill />
+            <TourPlayer />
             <TimeBar />
           </div>
           <ScaleBar />
