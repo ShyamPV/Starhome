@@ -6,3 +6,4 @@ export * from './moon';
 export * from './photometry';
 export * from './ephemeris';
 export * from './satellites';
+export * from './stars';

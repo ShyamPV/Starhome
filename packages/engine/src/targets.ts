@@ -1,11 +1,22 @@
-import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, SUN_GALACTOCENTRIC_PC, absoluteMagnitude, bvToTeff, raDecDistToGalactocentric, spectralClassFromTeff, type Vec3 } from '@starhome/astro';
-import { GLOBULAR_CLUSTERS, MOON, NAMED_STARS, PLANETS, SUN } from '@starhome/data';
+import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, SUN_GALACTOCENTRIC_PC, absoluteMagnitude, raDecDistToGalactocentric, starPhysics, type LifeStage, type Vec3 } from '@starhome/astro';
+import { COMPACT_OBJECTS, GLOBULAR_CLUSTERS, MOON, NAMED_STARS, PLANETS, SUN, type NamedStar } from '@starhome/data';
 import { NEBULAE, SATELLITES, SPIRAL_ARMS, armRadius, isModeledArmSegment, xyFromRBeta } from '@starhome/galaxy';
 import { Vector3 } from 'three';
 import { galPcToWorldKm } from './frames';
 import type { SolarSystem } from './solarSystem';
 
-export type TargetKind = 'star' | 'planet' | 'dwarf-planet' | 'moon' | 'black-hole' | 'cluster' | 'nebula' | 'galaxy' | 'region';
+export type TargetKind =
+  | 'star'
+  | 'planet'
+  | 'dwarf-planet'
+  | 'moon'
+  | 'exoplanet'
+  | 'black-hole'
+  | 'neutron-star'
+  | 'cluster'
+  | 'nebula'
+  | 'galaxy'
+  | 'region';
 
 export interface Target {
   id: string;
@@ -35,9 +46,42 @@ export interface Target {
   apparentMag?: number;
   /** Invisible to the eye whatever its brightness (hidden behind dust). */
   obscured?: boolean;
+  /** Catalogue star: physical parameters are derived (with modeled extinction) for the details. */
+  star?: NamedStar;
 }
 
 const SGR_A_STAR_RS_KM = 1.27e7; // Schwarzschild radius for 4.3e6 M_sun
+
+export const STAGE_LABEL: Record<LifeStage, string> = {
+  'main sequence': 'Main sequence',
+  subgiant: 'Subgiant',
+  giant: 'Giant',
+  'bright giant': 'Bright giant',
+  supergiant: 'Supergiant',
+  hypergiant: 'Hypergiant',
+  'white dwarf': 'White dwarf',
+  'luminous blue variable': 'Luminous blue variable',
+  'brown dwarf': 'Brown dwarf',
+};
+
+function sig(v: number, digits = 3): string {
+  if (v >= 1e5) return v.toExponential(1).replace('e+', ' × 10^');
+  if (v < 0.01) return v.toPrecision(2);
+  return Number(v.toPrecision(digits)).toLocaleString('en-US');
+}
+
+/** Physical parameters of a catalogue star, corrected for modeled extinction when known. */
+export function starPhysicsDetails(s: NamedStar, avMag: number | null): Record<string, string> {
+  const p = starPhysics(s.vmag, s.distPc, s.bv, s.spectralType, avMag ?? 0);
+  const out: Record<string, string> = {
+    'Temperature (est.)': `${(Math.round(p.teffK / 50) * 50).toLocaleString('en-US')} K`,
+    'Luminosity (est.)': `${sig(p.lumSun)} L☉`,
+    'Radius (est.)': p.radiusSun < 0.05 ? `${Math.round(p.radiusSun * 695_700).toLocaleString('en-US')} km` : `${sig(p.radiusSun)} R☉`,
+  };
+  if (p.massSun !== null) out['Mass (est., main sequence)'] = `${sig(p.massSun, 2)} M☉`;
+  out['Life stage'] = STAGE_LABEL[p.stage];
+  return out;
+}
 
 export function buildTargets(ss: SolarSystem): Target[] {
   const targets: Target[] = [];
@@ -78,17 +122,16 @@ export function buildTargets(ss: SolarSystem): Target[] {
   for (const s of NAMED_STARS) {
     const galPc = raDecDistToGalactocentric(s.ra, s.dec, s.distPc);
     const world = galPcToWorldKm(galPc);
-    const teff = bvToTeff(s.bv);
+    const phys = starPhysics(s.vmag, s.distPc, s.bv, s.spectralType);
     const absMag = absoluteMagnitude(s.vmag, s.distPc);
     const ly = (s.distPc * 3.26156).toFixed(s.distPc < 10 ? 2 : 0);
     targets.push({
       id: s.id,
       name: s.name,
       kind: 'star',
-      subtitle: `${s.spectralType} · ${s.constellation}`,
+      subtitle: `${s.spectralType} · ${STAGE_LABEL[phys.stage]} · ${s.constellation}`,
       position: fixed(world),
-      // Rough radius from L and Teff, only for zoom limits.
-      radiusKm: 695_700 * Math.max(0.1, Math.sqrt(10 ** (-0.4 * (absMag - 4.83))) * (5772 / teff) ** 2),
+      radiusKm: 695_700 * phys.radiusSun,
       viewDistanceKm: 2 * KM_PER_AU,
       provenance: 'catalog',
       facts: s.note ? [s.note] : [],
@@ -98,13 +141,41 @@ export function buildTargets(ss: SolarSystem): Target[] {
         'Apparent mag (V)': s.vmag.toFixed(2),
         'Absolute mag (V)': absMag.toFixed(2),
         Distance: `${s.distPc} pc (${ly} ly)`,
-        'Teff (from B-V)': `${Math.round(teff / 10) * 10} K (class ${spectralClassFromTeff(teff)})`,
         'RA / Dec': `${s.ra.toFixed(4)}°, ${s.dec.toFixed(4)}°`,
         Constellation: s.constellation,
       },
       labelRange: s.vmag < 1.5 ? 1500 * KM_PER_PC : 300 * KM_PER_PC,
       galPc,
       apparentMag: s.vmag,
+      star: s,
+    });
+  }
+
+  for (const c of COMPACT_OBJECTS) {
+    const galPc = raDecDistToGalactocentric(c.ra, c.dec, c.distPc);
+    const ly = Math.round(c.distPc * 3.26156).toLocaleString('en-US');
+    const bh = c.kind === 'black-hole';
+    targets.push({
+      id: c.id,
+      name: c.name,
+      kind: bh ? 'black-hole' : 'neutron-star',
+      subtitle: `${bh ? 'Stellar black hole' : c.kind === 'magnetar' ? 'Magnetar' : 'Pulsar'} · ${c.constellation}`,
+      position: fixed(galPcToWorldKm(galPc)),
+      radiusKm: bh ? 60 : 12,
+      viewDistanceKm: 0.5 * KM_PER_AU,
+      provenance: 'catalog',
+      facts: c.facts,
+      details: {
+        Designation: c.designation,
+        Type: bh ? 'Black hole in a binary' : c.kind === 'magnetar' ? 'Magnetar (neutron star)' : 'Pulsar (neutron star)',
+        ...c.details,
+        Distance: `${c.distPc.toLocaleString('en-US')} pc (${ly} ly)`,
+        'Distance source': c.distanceSource,
+        'RA / Dec': `${c.ra.toFixed(4)}°, ${c.dec.toFixed(4)}°`,
+        'Life stage': bh ? 'Remnant of a massive star (black hole)' : 'Remnant of a massive star (neutron star)',
+      },
+      labelRange: 1.5 * KM_PER_KPC,
+      galPc,
     });
   }
 

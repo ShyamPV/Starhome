@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useApp, type NavSection, type Theme } from '../state/store';
 import { ChevronIcon, ExploreIcon, GalaxyIcon, SettingsIcon, SkyIcon } from './icons';
+import { ExplorePanel } from './ExplorePanel';
 import { SkyPanel } from './SkyPanel';
 
 const SECTIONS: { id: NavSection; label: string; Icon: typeof GalaxyIcon }[] = [
@@ -40,7 +41,7 @@ function Heading({ children }: { children: ReactNode }) {
 }
 
 function GalaxyPanel() {
-  const { engine, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, view, set } = useApp();
+  const { engine, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, exoplanetMarkers, habitableZones, view, set } = useApp();
   const go = (id: string) => {
     // Destinations are places in the Galaxy: leave the view from the ground first.
     if (view === 'sky') {
@@ -69,6 +70,8 @@ function GalaxyPanel() {
       <Toggle label="Globular clusters" checked={clusters} onChange={(v) => set({ clusters: v })} />
       <Toggle label="Spiral arm labels" checked={arms} onChange={(v) => set({ arms: v })} />
       <Toggle label="Nebulae" checked={nebulae} onChange={(v) => set({ nebulae: v })} />
+      <Toggle label="Exoplanet hosts" checked={exoplanetMarkers} onChange={(v) => set({ exoplanetMarkers: v })} />
+      <Toggle label="Habitable zones" checked={habitableZones} onChange={(v) => set({ habitableZones: v })} />
       <Toggle label="Hubble-palette colours" checked={nebulaPalette === 'enhanced'} onChange={(v) => set({ nebulaPalette: v ? 'enhanced' : 'scientific' })} />
       <Heading>Controls</Heading>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px] text-ink-dim">
@@ -84,20 +87,6 @@ function GalaxyPanel() {
         <dd>Label to travel</dd>
       </dl>
     </>
-  );
-}
-
-function ComingSoon({ title, deliverable, items }: { title: string; deliverable: number; items: string[] }) {
-  return (
-    <div className="text-sm text-ink-dim">
-      <p className="text-ink">{title}</p>
-      <p className="mt-1 text-xs text-ink-faint">Arrives in deliverable {deliverable}:</p>
-      <ul className="mt-2 list-disc space-y-1 pl-4 text-xs">
-        {items.map((i) => (
-          <li key={i}>{i}</li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -173,17 +162,11 @@ export function NavRail() {
         </button>
       </div>
       {navOpen && (
-        <div className="glass w-64 overflow-y-auto rounded-2xl p-4">
+        <div className={`glass overflow-y-auto rounded-2xl p-4 ${nav === 'explore' ? 'w-[28rem]' : 'w-64'}`}>
           <h2 className="mb-3 text-base font-semibold tracking-tight">{SECTIONS.find((s) => s.id === nav)!.label}</h2>
           {nav === 'galaxy' && <GalaxyPanel />}
           {nav === 'sky' && <SkyPanel />}
-          {nav === 'explore' && (
-            <ComingSoon
-              title="Catalogue hub"
-              deliverable={6}
-              items={['Stars, exoplanets, nebulae, clusters, black holes', 'Filters, favourites and visited history', 'Visible tonight, closest, most extreme', 'Daily featured object']}
-            />
-          )}
+          {nav === 'explore' && <ExplorePanel />}
           {nav === 'settings' && <SettingsPanel />}
         </div>
       )}
@@ -193,7 +176,7 @@ export function NavRail() {
 
 /** Pushes settings from the store into the engine and the document theme. */
 export function useEngineSettings() {
-  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, nebulaBrightness, theme, view, location, skyLayers } = useApp();
+  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, nebulaBrightness, exoplanetMarkers, habitableZones, theme, view, location, skyLayers } = useApp();
   useEffect(() => engine?.setQuality(quality), [engine, quality]);
   useEffect(() => engine?.setExposure(exposure), [engine, exposure]);
   useEffect(() => engine?.setDiffuseGain(glow), [engine, glow]);
@@ -209,6 +192,11 @@ export function useEngineSettings() {
   useEffect(() => engine?.setLayerVisible('nebulae', nebulae), [engine, nebulae]);
   useEffect(() => engine?.setNebulaPalette(nebulaPalette), [engine, nebulaPalette]);
   useEffect(() => engine?.setNebulaBrightness(nebulaBrightness), [engine, nebulaBrightness]);
+  // Host markers show with the layer toggle, or while the exoplanet catalogue is open.
+  const { nav, navOpen, exploreTab } = useApp();
+  const showHosts = exoplanetMarkers || (nav === 'explore' && navOpen && exploreTab === 'exoplanets');
+  useEffect(() => engine?.setLayerVisible('exoplanets', showHosts), [engine, showHosts]);
+  useEffect(() => engine?.setHabitableZonesVisible(habitableZones), [engine, habitableZones]);
   useEffect(() => {
     document.documentElement.classList.remove('theme-night', 'theme-contrast');
     if (theme !== 'default') document.documentElement.classList.add(`theme-${theme}`);

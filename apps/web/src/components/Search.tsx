@@ -11,6 +11,8 @@ const KIND_LABEL: Record<TargetSummary['kind'], string> = {
   'black-hole': 'Black hole',
   cluster: 'Globular cluster',
   nebula: 'Nebula',
+  exoplanet: 'Exoplanet',
+  'neutron-star': 'Neutron star',
   galaxy: 'Galaxy',
   region: 'Region',
 };

@@ -205,3 +205,85 @@ export function evolvedStar(pop: PopulationId, rng: Rng): SynthStar {
   }
   return { teff, lum, absMagV: absMagVFromLuminosity(lum, teff), evolved: true };
 }
+
+export interface PopulationSample {
+  teff: Float32Array;
+  absMagV: Float32Array;
+  evolved: Uint8Array;
+  /** Index into the population ids, in the order of the density record. */
+  pop: Uint8Array;
+}
+
+/**
+ * A volume-limited sample of the synthetic stellar population, given local mass densities
+ * per population (M_sun/pc^3): what a complete census of a patch of the Galaxy would
+ * contain, for the background of the Hertzsprung-Russell diagram.
+ */
+export function samplePopulation(n: number, density: Record<PopulationId, number>, seed: number, minMass = 0.1): PopulationSample {
+  const rng = new Rng(seed);
+  const pops = Object.keys(density) as PopulationId[];
+  // Stars per M_sun of population above minMass, and evolved stars per M_sun.
+  const ms = pops.map((p) => (density[p] / MASS_FUNCTIONS[p].meanMass) * fractionAbove(p, minMass));
+  const giants = pops.map((p) => density[p] * SPECS[p].giantsPerMsun);
+  const total = ms.reduce((a, b) => a + b, 0) + giants.reduce((a, b) => a + b, 0);
+  const out: PopulationSample = { teff: new Float32Array(n), absMagV: new Float32Array(n), evolved: new Uint8Array(n), pop: new Uint8Array(n) };
+  for (let i = 0; i < n; i++) {
+    let u = rng.next() * total;
+    let star: SynthStar | null = null;
+    let popIndex = 1;
+    for (let k = 0; k < pops.length && !star; k++) {
+      popIndex = k;
+      if ((u -= ms[k]!) < 0) star = mainSequenceStar(sampleMass(pops[k]!, rng, minMass), rng);
+      else if ((u -= giants[k]!) < 0) star = evolvedStar(pops[k]!, rng);
+    }
+    star ??= mainSequenceStar(sampleMass('thin', rng, minMass), rng);
+    out.teff[i] = star.teff;
+    out.absMagV[i] = star.absMagV;
+    out.evolved[i] = star.evolved ? 1 : 0;
+    out.pop[i] = popIndex;
+  }
+  return out;
+}
+
+/** Vertical scale heights (pc) used for the naked-eye sample's survey volume. */
+const SCALE_HEIGHT_PC: Record<PopulationId, number> = { young: 90, thin: 300, old: 900 };
+
+/**
+ * Stars brighter than `limitMag` as seen from the Sun: a large volume-limited sample
+ * resampled with each star's survey volume (a sphere out to where it reaches the limit,
+ * flattened by the disc's thickness, with ~0.7 mag/kpc of dust). Bright stars are seen
+ * from much farther away, so giants and hot stars dominate, as in the real night sky.
+ */
+export function sampleVisible(n: number, density: Record<PopulationId, number>, limitMag: number, seed: number): PopulationSample {
+  const pool = samplePopulation(Math.max(20 * n, 100_000), density, seed);
+  const pops = Object.keys(density) as PopulationId[];
+  const m = pool.teff.length;
+  const cum = new Float64Array(m);
+  let acc = 0;
+  for (let i = 0; i < m; i++) {
+    // Distance at which the star reaches the limit, with dust (fixed-point iteration).
+    let d = 10 ** ((limitMag - pool.absMagV[i]! + 5) / 5);
+    for (let k = 0; k < 6; k++) d = 10 ** ((limitMag - pool.absMagV[i]! + 5 - 0.0007 * Math.min(d, 3000)) / 5);
+    d = Math.min(d, 3000);
+    const h = SCALE_HEIGHT_PC[pops[pool.pop[i]!]!];
+    acc += d < h ? d * d * d : h * d * d * 1.5;
+    cum[i] = acc;
+  }
+  const rng = new Rng(seed ^ 0x5eed);
+  const out: PopulationSample = { teff: new Float32Array(n), absMagV: new Float32Array(n), evolved: new Uint8Array(n), pop: new Uint8Array(n) };
+  for (let j = 0; j < n; j++) {
+    const u = rng.next() * acc;
+    let lo = 0;
+    let hi = m - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (cum[mid]! < u) lo = mid + 1;
+      else hi = mid;
+    }
+    out.teff[j] = pool.teff[lo]!;
+    out.absMagV[j] = pool.absMagV[lo]!;
+    out.evolved[j] = pool.evolved[lo]!;
+    out.pop[j] = pool.pop[lo]!;
+  }
+  return out;
+}

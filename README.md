@@ -4,9 +4,9 @@ A scientifically grounded, fully explorable 3D model of the Milky Way in the bro
 You can fly from a planet's surface out to a view of the whole barred spiral, with
 stars rendered everywhere, not just around the Sun.
 
-> Status: **deliverable 4 of 7** (volumetric 3D nebulae you can fly through, nearby dust
-> clouds of the Gould Belt). See [docs/PLAN.md](docs/PLAN.md) for the roadmap, the
-> rendering approach and the risks.
+> Status: **deliverable 5 of 7** (star catalogue with an interactive HR diagram, the full
+> NASA exoplanet catalogue with 3D planetary systems). See [docs/PLAN.md](docs/PLAN.md) for
+> the roadmap, the rendering approach and the risks.
 
 ## Quick start
 
@@ -18,12 +18,20 @@ pnpm test:e2e            # Playwright smoke tests (uses local Edge by default)
 pnpm data:hipparcos      # optional: download Hipparcos (~118k real stars)
 pnpm data:globulars      # rebuild the bundled Harris globular-cluster table
 pnpm data:constellations # rebuild the bundled constellation lines and names
+pnpm data:exoplanets     # refresh the NASA Exoplanet Archive snapshot (public/data)
 ```
 
 Controls: drag to orbit, right-drag to pan, use the wheel to zoom (logarithmic). Fly
 with W A S D, R/F for up/down, Shift for ×5. Ctrl/Cmd+K opens search. Double-click a
 label to travel there. The Galaxy panel toggles dust, globular clusters and spiral-arm
 labels; Settings has exposure and Milky Way glow (diffuse light) sliders.
+
+**Explore** tab: the star catalogue with a Hertzsprung-Russell diagram (named stars and
+exoplanet hosts over a modeled local population; click a star to fly there) and the
+exoplanet catalogue (filters by method, type, habitable zone, distance and system size,
+a discovery timeline that also filters the hosts in 3D, sorting by distance or Earth
+Similarity). Flying to a host or planet opens its system: planets on their orbits, the
+habitable zone, and procedurally textured planets.
 
 **Sky view** (Sky tab, *Look up from Earth*): stand at your location (or any latitude and
 longitude, or an observatory preset) and see the sky at the simulation time, with the
@@ -75,6 +83,13 @@ e2e               Playwright tests
 | Nearby dark clouds (Taurus, ρ Oph, Coalsack, Orion A/B, Aquila Rift, ...) | Gaia-based distances (Zucker et al. 2019/2020); smooth blobs | Real positions, **modeled** shapes |
 | Nebulae (19): position, distance, size, brightness | Literature values (sources in each object's panel) | Real |
 | Nebulae: 3D structure, colours | Parametric models of published morphology; emission-line colours | **Modeled** |
+| Star temperature, luminosity, radius, mass, life stage | Derived from catalogue V, distance, spectral type (Pecaut & Mamajek 2013 scale) | Estimates (labelled "est.") |
+| White dwarfs, pulsars, a magnetar, stellar black holes | Literature positions and distances (source per object) | Real |
+| Exoplanets (≈6,450) and their host stars | NASA Exoplanet Archive, composite parameters | Real |
+| Habitable zone, Earth Similarity Index | Kopparapu et al. 2014; Schulze-Makuch et al. 2011 | Computed estimates |
+| Planet orbital phase and orientation on the sky | Not measured for most planets | **Modeled** (assumed) |
+| Planet surfaces | Procedural from size and temperature | **Artist's impression** |
+| HR-diagram background population | Population synthesis of the solar neighbourhood | **Modeled** |
 | Spiral arm positions near the Sun | Reid et al. 2019 (BeSSeL maser parallaxes) | Real fit |
 | Spiral arms on the far side of the Galaxy | Extrapolated log spirals | **Modeled** |
 | Planet colours | Flat approximations | Artistic placeholder (textures in deliverable 7) |
@@ -121,6 +136,13 @@ the catalogue has them.
 - NASA Planetary Fact Sheets; IAU WGCCRE 2015 rotation elements.
 - astronomy-engine by Don Cross (MIT): VSOP87 (Bretagnon & Francou 1988), lunar theory,
   IAU 2006 precession, IAU 2000B nutation, rise/set searches, constellation boundaries.
+- This research has made use of the NASA Exoplanet Archive, which is operated by the
+  California Institute of Technology, under contract with the National Aeronautics and
+  Space Administration under the Exoplanet Exploration Program.
+- Kopparapu et al. 2014, ApJL 787, L29 (habitable zones); Schulze-Makuch et al. 2011
+  (Earth Similarity Index); Chen & Kipping 2017 (mass-radius relation); Pecaut & Mamajek
+  2013 (temperature and bolometric-correction scales); Levesque et al. 2005 (red
+  supergiant temperatures).
 - satellite.js (MIT): SGP4/SDP4 after Vallado, Crawford, Hujsak & Kelso 2006,
   *Revisiting Spacetrack Report #3*. Orbital elements from CelesTrak (T. S. Kelso),
   cached for 4 hours as CelesTrak asks.

@@ -4,6 +4,7 @@ import type { ClusterBuffers, ClusterRequest } from './clusters';
 import type { DustMap } from './dust';
 import type { GlowOptions } from './glow';
 import type { NebulaRequest, NebulaVolume } from './nebulae';
+import type { PopulationSample } from './populations';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import type { TileRequest } from './tiles';
 
@@ -61,6 +62,11 @@ export class GalaxyWorkerPool {
 
   generateNebula(request: NebulaRequest): Promise<NebulaVolume> {
     return this.send({ type: 'nebula', request });
+  }
+
+  /** Synthetic stars of the solar neighbourhood: a complete census, or those visible to the eye. */
+  samplePopulation(mode: 'volume' | 'visible', n: number, seed: number): Promise<PopulationSample> {
+    return this.send({ type: 'hrSample', mode, n, seed });
   }
 
   buildDustMap(): Promise<DustMap> {
