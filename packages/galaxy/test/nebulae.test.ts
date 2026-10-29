@@ -61,3 +61,23 @@ describe('nebula volumes', () => {
     expect(meanR(1)).toBeLessThan(meanR(0));
   });
 });
+
+describe('depth weights for survey-image nebulae', () => {
+  it('spreads every line of sight over depth so that it integrates to one', () => {
+    const res = 32;
+    const vol = generateNebula({ seed: 3, model: { shape: 'shell', inner: 0.4, outer: 0.8 }, res, depthWeights: true });
+    const [wE, wD] = vol.weightMax!;
+    for (const [i, j] of [[16, 16], [4, 16], [16, 27], [2, 2]]) {
+      let e = 0;
+      let d = 0;
+      for (let k = 0; k < res; k++) {
+        const v = ((k * res + j!) * res + i!) * 4;
+        e += (vol.data[v]! / 255) ** 2 * wE * (2 / res);
+        d += (vol.data[v + 1]! / 255) ** 2 * wD * (2 / res);
+      }
+      // 8-bit quantisation of a narrow profile: within a few percent.
+      expect(e, `emission column ${i},${j}`).toBeCloseTo(1, 1);
+      expect(d, `dust column ${i},${j}`).toBeCloseTo(1, 1);
+    }
+  });
+});

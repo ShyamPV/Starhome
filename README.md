@@ -21,7 +21,9 @@ one was built, the rendering approach, the risks and what is not done yet.
   and colour (Betelgeuse with its giant convection cells), pulsars at their real 24 km,
   black holes with their companion stars on their real orbits.
 - **Nebulae in 3D** (19 objects, from the Orion Nebula to the Crab), raymarched as volumes
-  you can fly through, plus the nearby dust clouds of the Gould Belt.
+  you can fly through, plus the nearby dust clouds of the Gould Belt. Fifteen are drawn from
+  the Digitized Sky Survey (stars removed), so from Earth's direction they look like the
+  real thing; their depth comes from 3D models of their published shapes.
 - **Stars** with temperatures, sizes and life stages, white dwarfs, pulsars, a magnetar and
   black holes, and an interactive Hertzsprung-Russell diagram.
 - **Exoplanets:** the full NASA Exoplanet Archive, with filters, a discovery timeline,
@@ -50,6 +52,7 @@ pnpm data:hipparcos      # optional: download Hipparcos (~118k real stars) into 
 pnpm data:exoplanets     # refresh the NASA Exoplanet Archive snapshot
 pnpm data:textures       # Solar System surface maps (Solar System Scope, CC BY 4.0)
 pnpm data:moons          # refit the moons' orbits to JPL Horizons
+pnpm data:nebulae        # rebuild the nebula maps from the Digitized Sky Survey (slow: ~20 min)
 pnpm data:globulars      # rebuild the Harris globular-cluster table
 pnpm data:constellations # rebuild the constellation lines and names
 pnpm build:icons         # app icons from public/favicon.svg
@@ -145,7 +148,8 @@ e2e               Playwright tests
 | Dust: extinction and reddening of every star, dust lanes, Great Rift | Smooth 3D model calibrated to observed extinction | **Modeled** (validated, see below) |
 | Nearby dark clouds (Taurus, ρ Oph, Coalsack, Orion A/B, Aquila Rift, ...) | Gaia-based distances (Zucker et al. 2019/2020); smooth blobs | Real positions, **modeled** shapes |
 | Nebulae (19): position, distance, size, brightness | Literature values (sources in each object's panel) | Real |
-| Nebulae: 3D structure, colours | Parametric models of published morphology; emission-line colours | **Modeled** |
+| Nebulae: appearance from Earth (15 of 19) | Digitized Sky Survey red and blue plates, stars removed; dust from silhouettes | Real image; channel split and dust **estimated** |
+| Nebulae: depth structure, and the whole of the Ring, Cat's Eye and Pleiades nebulosity | Parametric models of published morphology; emission-line colours; fine noise | **Modeled** |
 | Star temperature, luminosity, radius, mass, life stage | Derived from catalogue V, distance, spectral type (Pecaut & Mamajek 2013 scale) | Estimates (labelled "est.") |
 | White dwarfs, pulsars, a magnetar, stellar black holes | Literature positions and distances (source per object) | Real |
 | Exoplanets (≈6,450) and their host stars | NASA Exoplanet Archive, composite parameters | Real |
@@ -203,6 +207,11 @@ Links from the galaxy view contain no location.
   https://www.solarsystemscope.com/textures/, licensed CC BY 4.0, based on NASA mission
   imagery and elevation data (renamed, otherwise unmodified; see
   `apps/web/public/textures/ATTRIBUTION.txt`).
+- Nebula images: the Digitized Sky Surveys were produced at the Space Telescope Science
+  Institute under U.S. Government grant NAG W-2166, from photographic data of the Oschin
+  Schmidt Telescope on Palomar Mountain and the UK Schmidt Telescope; retrieved through
+  NASA's SkyView (GSFC). Free for non-commercial use with this acknowledgement; commercial
+  use of the Palomar and UK Schmidt plates needs permission from Caltech and AAO.
 - Moon orbits: fitted to ephemerides from the JPL Horizons system (Solar System Dynamics
   Group, Jet Propulsion Laboratory): MAR099, SAT441, URA182, NEP098, PLU060. Moon radii:
   JPL Planetary Satellite Physical Parameters. Galilean moons: Lieske's L1.2 theory.

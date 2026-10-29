@@ -46,6 +46,12 @@ export interface NebulaRequest {
   res: number;
   /** Ionising or illuminating stars, nebula unit coordinates (default: the centre). */
   sources?: Vec3[];
+  /**
+   * Depth weights instead of emission: for a nebula drawn from a survey image, how its light
+   * (R) and dust (G) spread along each line of sight parallel to z, each column summing to
+   * one over the unit box. The image sets how much; the model sets where in depth.
+   */
+  depthWeights?: boolean;
 }
 
 export interface NebulaVolume {
@@ -58,6 +64,8 @@ export interface NebulaVolume {
   emissionSum: number;
   /** Largest dust column straight through the box along z, in unit-box lengths. */
   maxDustColumn: number;
+  /** Depth-weight volumes: the largest emission and dust weights (R and G decode to (q/255)^2 x these). */
+  weightMax?: [number, number];
 }
 
 function fbm(x: number, y: number, z: number, octaves: number, seed: number): number {
@@ -257,6 +265,8 @@ export function generateNebula(req: NebulaRequest): NebulaVolume {
         }
       }
 
+  if (req.depthWeights) return depthWeightVolume(raw, res);
+
   const data = new Uint8Array(res * res * res * 4);
   const top = Math.max(max[0]!, max[1]!, max[2]!) || 1;
   const channelScale: [number, number, number] = [max[0]! / top, max[1]! / top, max[2]! / top];
@@ -278,4 +288,66 @@ export function generateNebula(req: NebulaRequest): NebulaVolume {
   let maxDustColumn = 0;
   for (const c of columns) maxDustColumn = Math.max(maxDustColumn, c);
   return { res, data, channelScale, emissionSum, maxDustColumn };
+}
+
+/**
+ * Per-column depth profiles of a sampled model, for nebulae drawn from a survey image:
+ * each line of sight along z gets at most two thin layers, at the centroids of the model's
+ * emission (or dust) in its near and far halves, weighted by how much lies in each. The
+ * layers' depths vary across the face as the model's shape does (a shell's front and back,
+ * a blister's near wall), so the image forms a crisp relief seen from any angle rather than
+ * a column smeared along the view. Each column integrates to one over the unit box.
+ */
+function depthWeightVolume(raw: Float32Array, res: number): NebulaVolume {
+  const n = res * res * res;
+  const dz = 2 / res;
+  const zOf = (k: number) => ((k + 0.5) / res) * 2 - 1;
+  const groups: { value: (v: number) => number; sigma: number }[] = [
+    { value: (v) => raw[v * 4]! + raw[v * 4 + 1]! + raw[v * 4 + 2]!, sigma: 0.06 },
+    // Dust sits in thicker sheets than the glowing skins.
+    { value: (v) => raw[v * 4 + 3]!, sigma: 0.1 },
+  ];
+  const weights = groups.map(() => new Float32Array(n));
+  groups.forEach(({ value, sigma }, g) => {
+    const gauss = (z: number, c: number) => Math.exp(-0.5 * ((z - c) / sigma) ** 2);
+    for (let j = 0; j < res; j++)
+      for (let i = 0; i < res; i++) {
+        const half = [
+          { m: 0, mz: 0 },
+          { m: 0, mz: 0 },
+        ];
+        for (let k = 0; k < res; k++) {
+          const z = zOf(k);
+          const w = value((k * res + j) * res + i);
+          const h = half[z < 0 ? 0 : 1]!;
+          h.m += w;
+          h.mz += w * z;
+        }
+        const total = half[0]!.m + half[1]!.m;
+        let sum = 0;
+        for (let k = 0; k < res; k++) {
+          const z = zOf(k);
+          let w = 0;
+          if (total > 0) {
+            for (const h of half) if (h.m > 0) w += (h.m / total) * gauss(z, h.mz / h.m);
+          } else {
+            // No model light here: a single layer at mid-depth.
+            w = gauss(z, 0);
+          }
+          weights[g]![(k * res + j) * res + i] = w;
+          sum += w * dz;
+        }
+        for (let k = 0; k < res; k++) weights[g]![(k * res + j) * res + i]! /= sum || 1;
+      }
+  });
+  const weightMax: [number, number] = [0, 0];
+  weights.forEach((w, g) => {
+    for (const x of w) if (x > weightMax[g]!) weightMax[g] = x;
+  });
+  const data = new Uint8Array(n * 4);
+  for (let v = 0; v < n; v++) {
+    data[v * 4] = Math.round(Math.sqrt(weights[0]![v]! / weightMax[0]) * 255);
+    data[v * 4 + 1] = Math.round(Math.sqrt(weights[1]![v]! / weightMax[1]) * 255);
+  }
+  return { res, data, channelScale: [1, 1, 1], emissionSum: 0, maxDustColumn: 1, weightMax };
 }

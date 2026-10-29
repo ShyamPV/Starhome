@@ -1,0 +1,232 @@
+{
+  "source": "Digitized Sky Survey (DSS2 red and blue) via NASA SkyView; stars removed and dust estimated by tools/build-nebula-maps.mjs.",
+  "credit": "The Digitized Sky Surveys were produced at the Space Telescope Science Institute under U.S. Government grant NAG W-2166, based on photographic data from the Oschin Schmidt Telescope (Palomar) and the UK Schmidt Telescope (AAO).",
+  "retrieved": "2026-10-29",
+  "maps": {
+    "m42": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.3702,
+        0.25
+      ],
+      "emissionSum": 2.00295,
+      "starsRemoved": 7671,
+      "pixelArcsec": 5.08
+    },
+    "carina-nebula": {
+      "survey": [
+        "DSS2 Red",
+        "DSS"
+      ],
+      "size": 768,
+      "channelScale": [
+        1,
+        0.0902,
+        0.25
+      ],
+      "emissionSum": 0.99624,
+      "starsRemoved": 171918,
+      "pixelArcsec": 6.25
+    },
+    "m16": {
+      "survey": [
+        "DSS1 Red",
+        "DSS1 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.7124,
+        0.25
+      ],
+      "emissionSum": 0.979363,
+      "starsRemoved": 37416,
+      "pixelArcsec": 5.47
+    },
+    "m8": {
+      "survey": [
+        "DSS1 Red",
+        "DSS1 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.923,
+        0.25
+      ],
+      "emissionSum": 2.8181,
+      "starsRemoved": 47433,
+      "pixelArcsec": 7.03
+    },
+    "m20": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.0001,
+        0.25
+      ],
+      "emissionSum": null,
+      "starsRemoved": 12428,
+      "pixelArcsec": 2.19
+    },
+    "m17": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.0001,
+        0.25
+      ],
+      "emissionSum": null,
+      "starsRemoved": 591,
+      "pixelArcsec": 1.56
+    },
+    "rosette": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.5047,
+        0.25
+      ],
+      "emissionSum": 1.43694,
+      "starsRemoved": 42120,
+      "pixelArcsec": 6.25
+    },
+    "horsehead": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        0.9972,
+        1,
+        0.2493
+      ],
+      "emissionSum": 0.716061,
+      "starsRemoved": 6942,
+      "pixelArcsec": 3.12
+    },
+    "north-america": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 768,
+      "channelScale": [
+        1,
+        0.4887,
+        0.25
+      ],
+      "emissionSum": 1.50323,
+      "starsRemoved": 142765,
+      "pixelArcsec": 6.25
+    },
+    "pelican": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.403,
+        0.25
+      ],
+      "emissionSum": 0.767245,
+      "starsRemoved": 24107,
+      "pixelArcsec": 4.69
+    },
+    "tarantula": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.4683,
+        0.25
+      ],
+      "emissionSum": 1.10978,
+      "starsRemoved": 13020,
+      "pixelArcsec": 3.12
+    },
+    "helix": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        0.6692,
+        1,
+        0.1673
+      ],
+      "emissionSum": 1.11921,
+      "starsRemoved": 2076,
+      "pixelArcsec": 1.95
+    },
+    "m27": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.7738,
+        0.25
+      ],
+      "emissionSum": 3.35215,
+      "starsRemoved": 568,
+      "pixelArcsec": 0.63
+    },
+    "m1": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 512,
+      "channelScale": [
+        1,
+        0.4338,
+        0.8379
+      ],
+      "emissionSum": 2.07021,
+      "starsRemoved": 393,
+      "pixelArcsec": 0.55
+    },
+    "veil": {
+      "survey": [
+        "DSS2 Red",
+        "DSS2 Blue"
+      ],
+      "size": 768,
+      "channelScale": [
+        1,
+        0.3325,
+        0.25
+      ],
+      "emissionSum": 0.184819,
+      "starsRemoved": 283661,
+      "pixelArcsec": 9.38
+    }
+  }
+}

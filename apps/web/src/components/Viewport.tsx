@@ -27,6 +27,7 @@ export function Viewport() {
         onSelect: setSelected,
         exoplanetsUrl: `${import.meta.env.BASE_URL}data/exoplanets.json`,
         texturesUrl: `${import.meta.env.BASE_URL}textures/`,
+        nebulaMapsUrl: `${import.meta.env.BASE_URL}nebulae/`,
         onTargetsChanged: setTargets,
         onExoplanets: setExoplanets,
         onArrive: markVisited,

@@ -10,11 +10,17 @@ import {
   LinearFilter,
   Matrix4,
   Mesh,
+  NoColorSpace,
   OneFactor,
   OneMinusSrcAlphaFactor,
   RGBAFormat,
+  RedFormat,
+  RepeatWrapping,
   ShaderMaterial,
+  TextureLoader,
+  Vector2,
   Vector3,
+  type Texture,
 } from 'three';
 import { galPcToWorldKm, galToRender } from './frames';
 import type { SharedStarUniforms } from './starMaterial';
@@ -75,6 +81,14 @@ uniform float uEmit;
 uniform float uKappa;
 uniform float uSteps;
 uniform vec3 uFg;
+uniform sampler3D uDetail;
+uniform float uDetailAmt;
+#ifdef USE_MAP
+uniform sampler2D uMap;
+uniform sampler2D uDustMap;
+uniform vec2 uWMax;
+uniform float uMapLod;
+#endif
 varying vec3 vLocal;
 
 void main() {
@@ -100,8 +114,24 @@ void main() {
     vec3 p = ro + rd * (tn + (float(i) + jitter) * dt);
     vec4 s = texture(uVolume, p * 0.5 + 0.5);
     s *= s;
-    vec3 e = s.r * uChannelScale.x * uC0 + s.g * uChannelScale.y * uC1 + s.b * uChannelScale.z * uC2;
-    float a = exp(-uKappa * s.a * dsPc);
+    // Fine structure below the volume's resolution: two octaves of tiling noise, mean ~1.
+    float dn = 0.65 * texture(uDetail, p * 1.7).r + 0.35 * texture(uDetail, p * 5.3 + 0.37).r;
+    float det = mix(1.0, 0.2 + 1.6 * dn, uDetailAmt);
+#ifdef USE_MAP
+    // Survey image (seen from Earth) spread along the line of sight by the model's depth weights.
+    vec2 uv = p.xy * 0.5 + 0.5;
+    // Explicit level of detail: inside a raymarch the automatic one sees wildly different
+    // neighbouring sample points and picks the coarsest mip, blurring the map away.
+    vec3 m = textureLod(uMap, uv, uMapLod).rgb;
+    m *= m;
+    float dm = textureLod(uDustMap, uv, uMapLod).r;
+    vec3 e = (m.r * uChannelScale.x * uC0 + m.g * uChannelScale.y * uC1 + m.b * uChannelScale.z * uC2) * (s.r * uWMax.x * det);
+    float dust = dm * dm * s.g * uWMax.y * det;
+#else
+    vec3 e = (s.r * uChannelScale.x * uC0 + s.g * uChannelScale.y * uC1 + s.b * uChannelScale.z * uC2) * det;
+    float dust = s.a * det;
+#endif
+    float a = exp(-uKappa * dust * dsPc);
     col += T * e * dsPc * (1.0 + a) * 0.5;
     T *= a;
     if (T < 0.01) break;
@@ -133,6 +163,78 @@ interface NebulaEntry {
   lastHighUse: number;
   fgAv: number;
   fgFrame: number;
+  /** Survey-image maps, when this nebula has them (emission, dust and their calibration). */
+  map: { emission: Texture; dust: Texture; emissionSum: number } | null;
+}
+
+/** maps.json written by tools/build-nebula-maps.mjs. */
+interface MapManifest {
+  source: string;
+  maps: Record<string, { size: number; channelScale: [number, number, number] }>;
+}
+
+/**
+ * Sum of a map's emission as the shader decodes it, times the pixel area in unit-box units:
+ * the brightness calibration (the image carries no alpha, so canvas readback is exact).
+ */
+function mapEmissionSum(img: HTMLImageElement, scale: [number, number, number]): number {
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let sum = 0;
+  // Stored as sqrt(value / max): decode as the shader does.
+  for (let i = 0; i < d.length; i += 4) sum += ((d[i]! / 255) ** 2) * scale[0] + ((d[i + 1]! / 255) ** 2) * scale[1] + ((d[i + 2]! / 255) ** 2) * scale[2];
+  return (sum * 4) / (c.width * c.height);
+}
+
+/** A 64^3 tiling value-noise texture for sub-voxel detail. */
+function detailTexture(): Data3DTexture {
+  const n = 64;
+  const lattice = 16;
+  const rnd = new Float32Array(lattice ** 3);
+  let seed = 1_234_567;
+  for (let i = 0; i < rnd.length; i++) {
+    seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+    rnd[i] = seed / 4_294_967_296;
+  }
+  const at = (x: number, y: number, z: number) => rnd[(((z % lattice) + lattice) % lattice) * lattice * lattice + (((y % lattice) + lattice) % lattice) * lattice + (((x % lattice) + lattice) % lattice)]!;
+  const noise = (x: number, y: number, z: number) => {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const zi = Math.floor(z);
+    const f = (t: number) => t * t * (3 - 2 * t);
+    const fx = f(x - xi);
+    const fy = f(y - yi);
+    const fz = f(z - zi);
+    const l = (a: number, b: number, t: number) => a + (b - a) * t;
+    return l(
+      l(l(at(xi, yi, zi), at(xi + 1, yi, zi), fx), l(at(xi, yi + 1, zi), at(xi + 1, yi + 1, zi), fx), fy),
+      l(l(at(xi, yi, zi + 1), at(xi + 1, yi, zi + 1), fx), l(at(xi, yi + 1, zi + 1), at(xi + 1, yi + 1, zi + 1), fx), fy),
+      fz,
+    );
+  };
+  const data = new Uint8Array(n * n * n);
+  for (let z = 0; z < n; z++)
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        // Two octaves on a 16-cell periodic lattice: wispy, and tiles seamlessly.
+        const u = (x / n) * lattice;
+        const v = (y / n) * lattice;
+        const w = (z / n) * lattice;
+        const ridge = 1 - Math.abs(2 * noise(u, v, w) - 1);
+        const value = 0.6 * ridge * ridge + 0.4 * noise(u * 2, v * 2, w * 2);
+        data[(z * n + y) * n + x] = Math.round(Math.min(1, value * 1.1) * 255);
+      }
+  const tex = new Data3DTexture(data, n, n, n);
+  tex.format = RedFormat;
+  tex.minFilter = LinearFilter;
+  tex.magFilter = LinearFilter;
+  tex.wrapS = tex.wrapT = tex.wrapR = RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 /**
@@ -150,12 +252,21 @@ export class NebulaLayer {
   private disposed = false;
   private readonly inv = new Matrix4();
   private readonly scratch = new Vector3();
+  private readonly detail = detailTexture();
+  /** Survey-image maps (null when none are available). */
+  private readonly manifest: Promise<MapManifest | null>;
 
   constructor(
     private readonly pool: GalaxyWorkerPool,
     private readonly shared: SharedStarUniforms,
     private readonly seed: number,
+    private readonly mapsUrl?: string,
   ) {
+    this.manifest = mapsUrl
+      ? fetch(`${mapsUrl}maps.json`)
+          .then((r) => (r.ok ? (r.json() as Promise<MapManifest>) : null))
+          .catch(() => null)
+      : Promise.resolve(null);
     const box = new BoxGeometry(2, 2, 2);
     for (const info of NEBULAE) {
       if (!info.model) continue;
@@ -178,6 +289,12 @@ export class NebulaLayer {
           uKappa: { value: 0 },
           uSteps: { value: 48 },
           uFg: { value: new Vector3(1, 1, 1) },
+          uDetail: { value: this.detail },
+          uDetailAmt: { value: 0.35 },
+          uMap: { value: null },
+          uDustMap: { value: null },
+          uWMax: { value: new Vector2(1, 1) },
+          uMapLod: { value: 0 },
         },
         side: BackSide,
         transparent: true,
@@ -221,6 +338,7 @@ export class NebulaLayer {
         lastHighUse: 0,
         fgAv: 0,
         fgFrame: -1,
+        map: null,
       });
       void this.load(this.entries[this.entries.length - 1]!, LOW_RES);
     }
@@ -260,8 +378,31 @@ export class NebulaLayer {
   }
 
   private async load(e: NebulaEntry, res: number): Promise<void> {
+    const manifest = await this.manifest;
+    const mapInfo = manifest?.maps[e.info.id];
+    if (mapInfo && !e.map) {
+      const loader = new TextureLoader();
+      const tex = (url: string) =>
+        loader.loadAsync(url).then((t) => {
+          // Data, not colour: no sRGB decoding; rows run from v = -1 upward.
+          t.colorSpace = NoColorSpace;
+          t.flipY = false;
+          t.needsUpdate = true;
+          return t;
+        });
+      const pair = await Promise.all([tex(`${this.mapsUrl}${e.info.id}.png`), tex(`${this.mapsUrl}${e.info.id}-dust.png`)]).catch(() => null);
+      if (pair && !this.disposed) {
+        e.map = { emission: pair[0], dust: pair[1], emissionSum: mapEmissionSum(pair[0].image as HTMLImageElement, mapInfo.channelScale) };
+        const u = e.material.uniforms;
+        u.uMap!.value = pair[0];
+        u.uDustMap!.value = pair[1];
+        u.uChannelScale!.value.set(...mapInfo.channelScale);
+        e.material.defines = { USE_MAP: '' };
+        e.material.needsUpdate = true;
+      }
+    }
     const vol = await this.pool
-      .generateNebula({ seed: hash32(this.seed, hash32(...[...e.info.id].map((c) => c.charCodeAt(0)))), model: e.info.model!, res, sources: e.sources })
+      .generateNebula({ seed: hash32(this.seed, hash32(...[...e.info.id].map((c) => c.charCodeAt(0)))), model: e.info.model!, res, sources: e.sources, depthWeights: e.map !== null })
       .catch(() => null);
     if (!vol || this.disposed) return;
     this.applyVolume(e, vol);
@@ -275,12 +416,20 @@ export class NebulaLayer {
     tex.needsUpdate = true;
     e.texture?.dispose();
     e.texture = tex;
-    e.volume = { res: vol.res, emissionSum: vol.emissionSum };
     const u = e.material.uniforms;
     u.uVolume!.value = tex;
-    u.uChannelScale!.value.set(...vol.channelScale);
-    // Dust: the densest column through the volume equals the nebula's peak extinction.
-    u.uKappa!.value = vol.maxDustColumn > 0 ? (0.921 * e.info.dustPeakAv) / (vol.maxDustColumn * e.halfPc.z) : 0;
+    if (e.map && vol.weightMax) {
+      // The map's emission, spread by weights that integrate to one along each column.
+      e.volume = { res: vol.res, emissionSum: e.map.emissionSum };
+      u.uWMax!.value.set(...vol.weightMax);
+      // The darkest point of the dust map (value 1) gets the nebula's peak extinction.
+      u.uKappa!.value = (0.921 * e.info.dustPeakAv) / e.halfPc.z;
+    } else {
+      e.volume = { res: vol.res, emissionSum: vol.emissionSum };
+      u.uChannelScale!.value.set(...vol.channelScale);
+      // Dust: the densest column through the volume equals the nebula's peak extinction.
+      u.uKappa!.value = vol.maxDustColumn > 0 ? (0.921 * e.info.dustPeakAv) / (vol.maxDustColumn * e.halfPc.z) : 0;
+    }
     e.highRes = vol.res >= HIGH_RES ? 'ready' : e.highRes === 'loading' ? 'loading' : 'none';
   }
 
@@ -333,7 +482,19 @@ export class NebulaLayer {
       const lumPerWeight = e.lumV / Math.max(1e-12, e.volume!.emissionSum * voxelToPc3);
       e.material.uniforms.uEmit!.value = (0.94 * this.shared.uExposure.value * gain * lumPerWeight) / (ppr * ppr);
       e.material.uniforms.uSteps!.value = angle > HIGH_RES_ANGLE ? Math.max(steps, 96) : steps;
+      if (e.map) {
+        // Map texels per screen pixel across the nebula sets the mip level.
+        const boxPixels = Math.max(1, 2 * angle * ppr);
+        e.material.uniforms.uMapLod!.value = Math.max(0, Math.log2((e.map.emission.image as HTMLImageElement).width / boxPixels));
+      }
+      // More fine structure up close; mapped nebulae keep their surveyed look from afar.
+      e.material.uniforms.uDetailAmt!.value = (angle > HIGH_RES_ANGLE ? 0.75 : 0.35) * (e.map ? 0.6 : 1);
     }
+  }
+
+  /** Whether a nebula is drawn from a survey image (for its panel's source line). */
+  hasMap(id: string): boolean {
+    return this.entries.some((e) => e.info.id === id && e.map !== null);
   }
 
   /** The nebula containing a Galactocentric point (pc), if any (inside its ellipsoid). */
@@ -350,8 +511,11 @@ export class NebulaLayer {
     this.disposed = true;
     for (const e of this.entries) {
       e.texture?.dispose();
+      e.map?.emission.dispose();
+      e.map?.dust.dispose();
       e.material.dispose();
     }
+    this.detail.dispose();
   }
 }
 

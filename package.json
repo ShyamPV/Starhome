@@ -17,7 +17,8 @@
     "data:exoplanets": "node tools/build-exoplanets.mjs",
     "data:textures": "node tools/fetch-textures.mjs",
     "build:icons": "node tools/build-icons.mjs",
-    "data:moons": "node tools/build-moon-elements.mjs"
+    "data:moons": "node tools/build-moon-elements.mjs",
+    "data:nebulae": "node tools/build-nebula-maps.mjs"
   },
   "engines": {
     "node": ">=20"

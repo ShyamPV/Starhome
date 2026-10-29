@@ -248,6 +248,8 @@ export interface EngineOptions {
   /** Called when targets are added after start-up (the exoplanet catalogue loads asynchronously). */
   onTargetsChanged?: (targets: TargetSummary[]) => void;
   onExoplanets?: (catalog: ExoplanetCatalog) => void;
+  /** Folder of nebula survey maps (tools/build-nebula-maps.mjs), e.g. "/nebulae/". */
+  nebulaMapsUrl?: string;
   /** Folder of Solar System surface maps (tools/fetch-textures.mjs), e.g. "/textures/". */
   texturesUrl?: string;
   /** Called when a flight reaches its destination (for "visited" tracking). */
@@ -383,7 +385,7 @@ export class Engine {
     for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) this.scene.add(layer.group);
     this.sky = new SkyMode(this.skyPointMaterial, this.solar);
     this.scene.add(this.sky.group);
-    this.nebulae = new NebulaLayer(this.pool, this.shared, this.seed);
+    this.nebulae = new NebulaLayer(this.pool, this.shared, this.seed, opts.nebulaMapsUrl);
     this.scene.add(this.nebulae.group);
     this.exoplanets = new ExoplanetLayer(this.catalogMaterial, (id) => this.select(id));
     this.scene.add(this.exoplanets.group);
@@ -997,7 +999,13 @@ export class Engine {
     const av = t.galPc && t.kind !== 'region' ? this.extinctionFromSun(t.galPc) : null;
     const details = t.star ? { ...t.details, ...starPhysicsDetails(t.star, av) } : { ...t.details };
     if (av !== null) details['Extinction from Sun (model)'] = `A_V ≈ ${av < 10 ? av.toFixed(2) : av.toFixed(0)} mag`;
-    return { ...this.brief(t, this.solar.bodies.get('earth')!.world), details };
+    const brief = this.brief(t, this.solar.bodies.get('earth')!.world);
+    if (t.kind === 'nebula' && this.nebulae.hasMap(t.id)) {
+      // Drawn from the survey image: say so in place of "modeled from its published shape".
+      brief.source = t.source.replace('3D structure modeled', 'appearance from Earth: Digitized Sky Survey (DSS2), stars removed; depth layers modeled');
+      brief.facts = t.facts.map((f) => f.replace('the 3D structure is modeled from its published shape.', 'seen from Earth it is drawn from the Digitized Sky Survey image, and its depth is modeled from its published shape.'));
+    }
+    return { ...brief, details };
   }
 
   /** The star or compact object close enough to draw as itself (a planetary system draws its own star). */

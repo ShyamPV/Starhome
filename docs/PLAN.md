@@ -159,6 +159,40 @@ licensing decision), atmospheric extinction near the horizon, and light pollutio
   replaces a blank screen when WebGL 2 is missing; an offline notice; the README is now
   the complete user and attribution document.
 
+### After deliverable 7: nebulae from the sky survey
+
+The parametric nebulae lacked the detail and structure of the real objects.
+`tools/build-nebula-maps.mjs` now fetches Digitized Sky Survey red and blue plates (as FITS
+from NASA SkyView, north-up with known scale) for 15 nebulae and turns them into maps:
+
+- **Stars removed:** peaks whose half-maximum radius is the same in all eight directions
+  (filaments are long, so they survive; saturated stars are found too), filled from the
+  background; leftover single-pixel specks median-filtered.
+- **Sky removed:** a low-percentile floor, capped at the field's lower quartile so a nebula
+  that fills the field keeps its glow, then a soft pedestal so diffuse Galactic light does
+  not fill the volume as fog.
+- **Dust:** silhouettes darker than the surrounding glow at two scales (the Horsehead, the
+  Eagle's pillars). Star counts were tried and dropped: bright emission hides faint stars
+  too, which made glowing regions look dusty.
+- **Into 3D:** spreading the image along each line of sight looks right only from Earth;
+  from nearby, perspective rays smear it into streaks. Each column's light instead goes into
+  at most two thin layers, at the front and back centroids of the model's emission. That
+  gives a crisp relief from any angle, shaped like the model (a shell's two faces, a
+  blister's near wall). Tested: every column integrates to exactly the image's brightness.
+- **Rendering:** the map is sampled at an explicit mip level (inside a raymarch the
+  automatic level picks the coarsest mip and blurs the map to a single colour), and a
+  tiling 3D noise texture adds structure below the volume's resolution as you fly in.
+
+Limits: DSS plates saturate in the brightest cores (the centres of Orion, M17 and the Trifid
+are flat). Where DSS2 plates of different exposure meet across a nebula (the Eagle, the
+Lagoon, Carina) the single-plate first-generation survey (DSS1) is used instead. From deep inside,
+the image layers are seen at grazing angles and stretch into streaks (the Veil, Carina): a
+limit of drawing a 2D image as thin sheets; true 3D structure would need data we do not have. The red/blue
+split into Halpha and [O III] is approximate, and the maps are photographic, not
+flux-calibrated (each nebula's total brightness still comes from its catalogue magnitude).
+The Ring and Cat's Eye are too small for the survey, and the Pleiades' nebulosity is lost
+in its stars' halos; those three stay fully modeled.
+
 ### After deliverable 7: no empty arrivals
 
 A sweep flying to one object of every kind found places with nothing to see on arrival.
@@ -327,6 +361,7 @@ from a hand-built list of clouds rather than resampled Edenhofer/Lallement 3D ma
 | JPL Horizons ephemerides (moon fits) | US government work, free with credit | Low: credited in the README and the data file |
 | NASA/ESA nebula imagery (for palette reference only) | Varies; ESA/Hubble is CC BY 4.0; some NASA images contain third-party content | Medium: we use published line ratios, not images |
 | Constellation art (figures) | Many sets are non-commercial or share-alike | **Medium: lines solved with BSD data; art still needs a permissive set or our own drawings** |
+| Digitized Sky Survey (nebula maps) | Free for non-commercial use with acknowledgement; commercial use of the Palomar and UK Schmidt plates needs permission | **Medium: fine for this project; a commercial release would need permission or another survey** |
 | 3D dust maps (Edenhofer 2024, Lallement 2022) | Open data with citation | Low, but files are large (GBs): resample offline |
 
 ## Performance risks

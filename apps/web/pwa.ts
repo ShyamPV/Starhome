@@ -11,7 +11,8 @@ const PUBLIC_PRECACHE = ['favicon.svg', 'manifest.webmanifest', 'icon-192.png', 
  * shell and core catalogue work offline. Strategy:
  * - page loads: network first, falling back to the cached shell when offline;
  * - build assets and precached data: cache first (names change when content changes);
- * - textures and optional catalogues (public/textures, public/data): cached the first
+ * - textures, nebula maps and optional catalogues (public/textures, public/nebulae,
+ *   public/data): cached the first
  *   time they are used, so places you have visited stay available offline.
  * The cache name carries a hash of everything precached; a new build installs alongside
  * the old one and the page offers a reload to switch.
@@ -76,7 +77,7 @@ self.addEventListener('fetch', (event) => {
       if (hit) return hit;
       const response = await fetch(request);
       const path = url.pathname;
-      if (response.ok && (path.includes('/textures/') || path.includes('/data/'))) {
+      if (response.ok && (path.includes('/textures/') || path.includes('/data/') || path.includes('/nebulae/'))) {
         const cache = await caches.open(RUNTIME);
         await cache.put(request, response.clone());
       }
