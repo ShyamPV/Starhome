@@ -67,3 +67,11 @@ describe('classification and similarity', () => {
     expect(planetFacts(planet('TRAPPIST-1 e'), host(planet('TRAPPIST-1 e').hostId)).length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('tour narration', () => {
+  it('picks the right indefinite article for spoken numbers', async () => {
+    const { indefiniteArticle } = await import('../src');
+    for (const n of ['8', '8.4', '80', '11', '11.2', '18', '18,000', '11,000']) expect(indefiniteArticle(n), n).toBe('an');
+    for (const n of ['1', '2.3', '20', '110', '118', '1,100', '180', '50.8']) expect(indefiniteArticle(n), n).toBe('a');
+  });
+});

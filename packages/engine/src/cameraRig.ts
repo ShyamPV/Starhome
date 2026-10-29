@@ -20,6 +20,8 @@ interface Flight {
   duration: number;
   /** Extra log-distance at mid-flight so long hops pull back to show context. */
   arc: number;
+  /** Settles the flyTo() promise: true on arrival, false when interrupted. */
+  done: (arrived: boolean) => void;
 }
 
 /** The observer's local horizontal frame in the render frame, set each frame in sky mode. */
@@ -81,6 +83,8 @@ export class CameraRig {
   private readonly tmp3 = new Vector3();
   private readonly basis = new Matrix4();
   reducedMotion = false;
+  /** Slow orbit around the target while idle (rad/s), e.g. during a tour. */
+  autoRotate = 0;
 
   constructor(private readonly element: HTMLElement) {
     element.addEventListener('pointerdown', this.onPointerDown);
@@ -133,12 +137,16 @@ export class CameraRig {
     return { yaw: Math.atan2(d.x, d.z), pitch: Math.max(-1.5697, Math.min(1.5697, Math.asin(d.y))) };
   }
 
-  flyTo(getTarget: () => Vector3, distance: number, opts: { duration?: number; pitch?: number; yaw?: number; follow?: boolean } = {}): void {
+  /** Travel to a (possibly moving) point; resolves true on arrival, false if interrupted. */
+  flyTo(getTarget: () => Vector3, distance: number, opts: { duration?: number; pitch?: number; yaw?: number; follow?: boolean } = {}): Promise<boolean> {
+    this.endFlight(false);
     const dest = getTarget();
     const sep = this.target.distanceTo(dest);
     const far = Math.max(this.distance, distance);
     const arc = sep > far ? Math.log(sep / far) * 0.85 : 0;
     const duration = this.reducedMotion ? 0.01 : (opts.duration ?? Math.min(6, 1.8 + 0.25 * Math.log10(1 + sep / Math.max(distance, 1))));
+    let done: (arrived: boolean) => void = () => {};
+    const promise = new Promise<boolean>((resolve) => (done = resolve));
     this.flight = {
       fromTarget: this.target.clone(),
       fromDistance: this.distance,
@@ -150,12 +158,20 @@ export class CameraRig {
       elapsed: 0,
       duration,
       arc,
+      done,
     };
     this.follow = opts.follow === false ? null : getTarget;
+    return promise;
   }
 
   cancelFlight(): void {
+    this.endFlight(false);
+  }
+
+  private endFlight(arrived: boolean): void {
+    const f = this.flight;
     this.flight = null;
+    f?.done(arrived);
   }
 
   update(dt: number): void {
@@ -174,10 +190,11 @@ export class CameraRig {
       this.distance = Math.exp(logD);
       if (f.toPitch !== null) this.pitch += (f.toPitch - this.pitch) * Math.min(1, dt * 3);
       if (f.toYaw !== null) this.yaw += (f.toYaw - this.yaw) * Math.min(1, dt * 3);
-      if (t >= 1) this.flight = null;
+      if (t >= 1) this.endFlight(true);
     } else if (this.follow) {
       this.target.copy(this.follow());
     }
+    if (!this.flight && this.autoRotate && !this.dragging && this.keys.size === 0) this.yaw += this.autoRotate * dt;
 
     this.applyKeys(dt);
 
@@ -252,7 +269,7 @@ export class CameraRig {
     if (this.keys.has('e')) this.yaw -= dt * 1.2;
     if (moved) {
       this.follow = null;
-      this.flight = null;
+      this.endFlight(false);
     }
   }
 
@@ -287,7 +304,7 @@ export class CameraRig {
       const up = new Vector3().crossVectors(right, forward);
       this.target.addScaledVector(right, -dx * scale).addScaledVector(up, dy * scale);
       this.follow = null;
-      this.flight = null;
+      this.endFlight(false);
     }
   };
 

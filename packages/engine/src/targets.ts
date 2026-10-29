@@ -36,6 +36,8 @@ export interface Target {
   approachFrom?: Vector3;
   /** Real data vs. modelled. */
   provenance: 'catalog' | 'ephemeris' | 'model';
+  /** Where the data comes from, for the citation line. */
+  source: string;
   facts: string[];
   details: Record<string, string>;
   /** Show a label only when the camera is closer than this, km. */
@@ -50,6 +52,7 @@ export interface Target {
   star?: NamedStar;
 }
 
+const SOLAR_SYSTEM_SOURCE = 'Positions: astronomy-engine (VSOP87, lunar theory). Physical data: NASA Planetary Fact Sheets.';
 const SGR_A_STAR_RS_KM = 1.27e7; // Schwarzschild radius for 4.3e6 M_sun
 
 export const STAGE_LABEL: Record<LifeStage, string> = {
@@ -97,6 +100,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
     radiusKm: SUN.radiusKm,
     viewDistanceKm: SUN.radiusKm * 8,
     provenance: 'ephemeris',
+    source: SOLAR_SYSTEM_SOURCE,
     facts: SUN.facts,
     details: { 'Spectral type': 'G2V', 'Radius': '695,700 km', 'Teff': '5,772 K', 'Distance to Galactic centre': '8.18 kpc' },
     labelRange: 300 * KM_PER_KPC,
@@ -113,6 +117,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: info.radiusKm,
       viewDistanceKm: info.radiusKm * (info.ring ? 9 : 5),
       provenance: 'ephemeris',
+      source: SOLAR_SYSTEM_SOURCE,
       facts: info.facts,
       details: { Radius: `${info.radiusKm.toLocaleString('en-US')} km`, 'Rotation period': `${Math.abs(info.rotationHours).toFixed(2)} h${info.rotationHours < 0 ? ' (retrograde)' : ''}` },
       labelRange: info.id === 'moon' ? 0.05 * KM_PER_AU : 400 * KM_PER_AU,
@@ -134,6 +139,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: 695_700 * phys.radiusSun,
       viewDistanceKm: 2 * KM_PER_AU,
       provenance: 'catalog',
+      source: 'SIMBAD and Hipparcos (van Leeuwen 2007). Temperature, size and mass derived on the Pecaut & Mamajek (2013) scale.',
       facts: s.note ? [s.note] : [],
       details: {
         Designation: s.designation,
@@ -164,6 +170,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: bh ? 60 : 12,
       viewDistanceKm: 0.5 * KM_PER_AU,
       provenance: 'catalog',
+      source: `Distance: ${c.distanceSource}. Position: SIMBAD.`,
       facts: c.facts,
       details: {
         Designation: c.designation,
@@ -205,6 +212,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: c.rhPc * KM_PER_PC,
       viewDistanceKm: Math.max(15, c.rhPc * 6) * KM_PER_PC,
       provenance: 'catalog',
+      source: 'Harris (1996; 2010 edition) catalogue of Milky Way globular clusters.',
       facts: [
         ...c.facts,
         'Position, distance, brightness and size are from the Harris catalogue; the individual stars drawn up close are modeled from them.',
@@ -247,6 +255,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: 0.5 * sizePc[0]! * KM_PER_PC,
       viewDistanceKm: 2.2 * sizePc[0]! * KM_PER_PC,
       provenance: 'catalog',
+      source: `Distance: ${n.distanceSource}. Size and position: SIMBAD; 3D structure modeled.`,
       facts: [
         ...n.facts,
         n.model
@@ -286,6 +295,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       viewDistanceKm: 7 * KM_PER_KPC,
       pitch: 1.0,
       provenance: 'model',
+      source: 'Reid et al. 2019 (ApJ 885, 131), BeSSeL maser parallaxes.',
       facts: [
         `Log-spiral fit to maser parallaxes (Reid et al. 2019), measured between Galactocentric azimuths ${arm.measured[0]}° and ${arm.measured[1]}°.`,
         isModeledArmSegment(arm, a.beta) ? 'This part of the arm lies outside the measured range and is extrapolated.' : 'Beyond the measured range the arm is extrapolated and marked as modeled.',
@@ -309,6 +319,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
     radiusKm: SGR_A_STAR_RS_KM,
     viewDistanceKm: SGR_A_STAR_RS_KM * 40,
     provenance: 'catalog',
+    source: 'GRAVITY Collaboration 2019; Event Horizon Telescope Collaboration 2022.',
     facts: [
       'About 4.3 million solar masses (GRAVITY Collaboration, Event Horizon Telescope).',
       'Imaged by the Event Horizon Telescope in 2022.',
@@ -317,6 +328,26 @@ export function buildTargets(ss: SolarSystem): Target[] {
     details: { Mass: '4.3 × 10⁶ M☉', 'Schwarzschild radius': '1.27 × 10⁷ km (0.08 AU)', Distance: '8.18 kpc (26,700 ly)' },
     labelRange: 60 * KM_PER_KPC,
     obscured: true,
+  });
+
+  targets.push({
+    id: 'galactic-bar',
+    name: 'Galactic bar and bulge',
+    kind: 'region',
+    subtitle: 'Old stars at the centre of the Galaxy',
+    position: fixed(new Vector3(0, 0, 0)),
+    radiusKm: 2 * KM_PER_KPC,
+    viewDistanceKm: 9 * KM_PER_KPC,
+    pitch: 0.45,
+    provenance: 'model',
+    source: 'Starhome galaxy model; bar geometry after Wegg & Gerhard 2013 and Wegg et al. 2015.',
+    facts: [
+      'A bar about 10 kpc long, angled about 27° to the line from the Sun, puffed up into a boxy, peanut-shaped bulge.',
+      'Its stars are mostly old (around 10 billion years) and rich in metals.',
+    ],
+    details: { Length: '≈ 10 kpc (long bar)', 'Angle to Sun–centre line': '≈ 27°', 'Distance from Sun': '8.18 kpc' },
+    labelRange: 0,
+    galPc: [0, 0, 0],
   });
 
   targets.push({
@@ -329,6 +360,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
     viewDistanceKm: 55 * KM_PER_KPC,
     pitch: 1.2,
     provenance: 'model',
+    source: 'Starhome galaxy model; arms from Reid et al. 2019, bar after Wegg & Gerhard 2013 and Wegg et al. 2015.',
     facts: [
       'Contains an estimated 100-400 billion stars.',
       'The stellar disc is ~30 kpc across but only ~0.3 kpc thick.',
@@ -348,6 +380,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: s.radius * KM_PER_KPC,
       viewDistanceKm: s.radius * 5 * KM_PER_KPC,
       provenance: 'model',
+      source: 'Distances: Pietrzyński et al. 2019, Graczyk et al. 2020. Luminosity: McConnachie 2012.',
       facts: [],
       details: { 'V-band luminosity': `${s.luminosity.toExponential(1)} L☉` },
       labelRange: 400 * KM_PER_KPC,

@@ -4,8 +4,8 @@ A scientifically grounded, fully explorable 3D model of the Milky Way in the bro
 You can fly from a planet's surface out to a view of the whole barred spiral, with
 stars rendered everywhere, not just around the Sun.
 
-> Status: **deliverable 5 of 7** (star catalogue with an interactive HR diagram, the full
-> NASA exoplanet catalogue with 3D planetary systems). See [docs/PLAN.md](docs/PLAN.md) for
+> Status: **deliverable 6 of 7** (guided tours, the Explore catalogue hub with favourites
+> and curated lists, shareable links, "Surprise me"). See [docs/PLAN.md](docs/PLAN.md) for
 > the roadmap, the rendering approach and the risks.
 
 ## Quick start
@@ -22,11 +22,21 @@ pnpm data:exoplanets     # refresh the NASA Exoplanet Archive snapshot (public/d
 ```
 
 Controls: drag to orbit, right-drag to pan, use the wheel to zoom (logarithmic). Fly
-with W A S D, R/F for up/down, Shift for ×5. Ctrl/Cmd+K opens search. Double-click a
-label to travel there. The Galaxy panel toggles dust, globular clusters and spiral-arm
-labels; Settings has exposure and Milky Way glow (diffuse light) sliders.
+with W A S D, R/F for up/down, Q/E to turn, Shift for ×5. Ctrl/Cmd+K opens search.
+Double-click a label to travel there; while a warp is under way the destination and the
+speed (in multiples of c) show above the time bar. **Surprise me** flies somewhere at
+random. **Share** copies a link to exactly this view (camera, time, selection); the
+address bar always holds the same link. The Galaxy panel toggles dust, globular clusters
+and spiral-arm labels; Settings has exposure and Milky Way glow (diffuse light) sliders.
 
-**Explore** tab: the star catalogue with a Hertzsprung-Russell diagram (named stars and
+**Explore** tab. *Discover* is the catalogue hub: an object of the day, and every object
+(stars, exoplanets, nebulae, clusters, black holes and neutron stars, the Solar System,
+galaxies and spiral arms) in one searchable, filterable list with curated lists:
+highlights, closest to Earth, visible tonight from your location, most extreme, and your
+favourites and visited objects (kept in this browser's IndexedDB). *Tours* plays guided
+tours: the journey to the galactic centre, the great nebulae, the closest exoplanets (built
+from the archive snapshot) and the top 10 extreme stars. *Stars* has the star catalogue
+with a Hertzsprung-Russell diagram (named stars and
 exoplanet hosts over a modeled local population; click a star to fly there) and the
 exoplanet catalogue (filters by method, type, habitable zone, distance and system size,
 a discovery timeline that also filters the hosts in 3D, sorting by distance or Earth
@@ -44,7 +54,8 @@ sets. Your location is remembered in this browser only.
 ## Repository layout
 
 ```
-apps/web          React + Vite + Tailwind UI (Zustand state)
+apps/web          React + Vite + Tailwind UI (Zustand state; favourites and visits in
+                  IndexedDB via Dexie; shareable view links)
 packages/astro    Pure, tested astronomy math: units, time, ICRS/ecliptic/Galactic/
                   Galactocentric frames, ephemerides (VSOP87, lunar theory), observer
                   alt/az and rise/set, SGP4 satellites, photometry
@@ -57,7 +68,8 @@ packages/engine   three.js renderer: floating origin, star shader with per-star
                   constellations, planets and satellites), sky worker, bloom + tone
                   mapping, labels
 packages/data     Named-star seed catalogue, Solar System data, Hipparcos loader,
-                  Harris globular-cluster catalogue, constellations, CelesTrak TLE loader
+                  Harris globular-cluster catalogue, constellations, CelesTrak TLE loader,
+                  exoplanet catalogue, compact objects, tours and superlatives
 tools             Catalogue preprocessing scripts (Node)
 e2e               Playwright tests
 ```
@@ -90,14 +102,24 @@ e2e               Playwright tests
 | Planet orbital phase and orientation on the sky | Not measured for most planets | **Modeled** (assumed) |
 | Planet surfaces | Procedural from size and temperature | **Artist's impression** |
 | HR-diagram background population | Population synthesis of the solar neighbourhood | **Modeled** |
+| Tour narration, "most extreme" list, object of the day | Hand-written from the catalogues and sources above | Curated text |
+| "Visible tonight" | Highest altitude after nautical dusk, from catalogue positions and ephemerides | Computed |
 | Spiral arm positions near the Sun | Reid et al. 2019 (BeSSeL maser parallaxes) | Real fit |
 | Spiral arms on the far side of the Galaxy | Extrapolated log spirals | **Modeled** |
 | Planet colours | Flat approximations | Artistic placeholder (textures in deliverable 7) |
 
 The HUD shows **Modeled** whenever you are beyond real catalogue coverage (300 pc from
 the Sun). The object panel labels each item as *Catalogue data*, *Ephemeris* or
-*Modeled*, and shows the model's extinction from the Sun next to measured values where
-the catalogue has them.
+*Modeled*, shows the model's extinction from the Sun next to measured values where the
+catalogue has them, and names its source.
+
+**Privacy.** Your location, favourites and visited objects stay in this browser. A shared
+link from the sky view contains the location rounded to 0.1° (about 10 km); opening such
+a link uses that place for the visit without replacing your saved one. Links from the
+galaxy view contain no location.
+
+The Explore hub has no photographs of objects: images with clear reuse terms for every
+object are a licensing project of their own (see the plan's licensing risks).
 
 ### How well the model matches the real Galaxy (checked in tests)
 
@@ -146,6 +168,8 @@ the catalogue has them.
 - satellite.js (MIT): SGP4/SDP4 after Vallado, Crawford, Hujsak & Kelso 2006,
   *Revisiting Spacetrack Report #3*. Orbital elements from CelesTrak (T. S. Kelso),
   cached for 4 hours as CelesTrak asks.
+- Dexie.js (Apache-2.0) for IndexedDB storage.
+- Wittkowski et al. 2012 (radius of VY Canis Majoris); Gaia Collaboration 2024 (Gaia BH3).
 - Constellation lines and names: d3-celestial, Copyright (c) 2015, Olaf Frohn, BSD-3-Clause
   (lines after the IAU constellation charts). The full licence notice is reproduced in
   `packages/data/src/constellations.json`.

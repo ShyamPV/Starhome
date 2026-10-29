@@ -98,6 +98,7 @@ test('explore: HR diagram and exoplanet catalogue', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
   await page.getByRole('button', { name: 'Explore', exact: true }).click();
+  await page.getByRole('tab', { name: 'Stars' }).click();
   await expect(page.getByRole('img', { name: /Hertzsprung-Russell diagram/ })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Star catalogue' })).toContainText('Betelgeuse');
   await page.getByRole('tab', { name: 'Exoplanets' }).click();
@@ -110,4 +111,51 @@ test('explore: HR diagram and exoplanet catalogue', async ({ page }) => {
   await expect(panel).toContainText('Yes (conservative)');
   await expect(panel).toContainText('artist’s impression');
   await expect(page.getByLabel('Galactic position')).toContainText('TRAPPIST-1 planetary system', { timeout: 45_000 });
+});
+
+test('a shared link restores the camera and selection, and the address bar tracks the view', async ({ page }) => {
+  await page.goto('/#sel=m42&at=m42&d=3e14&a=0.5,0.2');
+  await expect(page.getByRole('complementary', { name: 'Orion Nebula details' })).toBeVisible({ timeout: 20_000 });
+  const rig = await page.evaluate(() => {
+    const r = (window as unknown as { starhome: { rig: { distance: number; yaw: number; pitch: number } } }).starhome.rig;
+    return { d: r.distance, yaw: r.yaw, pitch: r.pitch };
+  });
+  expect(rig.d).toBeCloseTo(3e14, -9);
+  expect(rig.pitch).toBeCloseTo(0.2, 3);
+  // The fragment is rewritten from the live view (same anchor, no history entries).
+  await expect.poll(() => page.evaluate(() => location.hash), { timeout: 5000 }).toContain('at=m42');
+});
+
+test('explore hub: favourites persist, curated lists, tours and surprise', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Explore', exact: true }).click();
+  await expect(page.getByLabel('Featured today')).toBeVisible();
+  await page.getByLabel('Search the catalogue').fill('Sirius');
+  await page.getByRole('button', { name: 'Add Sirius to favourites' }).click();
+  await page.getByRole('tab', { name: /Favourites/ }).click();
+  await expect(page.getByRole('list', { name: 'Catalogue results' })).toContainText('Sirius');
+
+  // Kept in IndexedDB across a reload.
+  await page.reload();
+  await page.getByRole('button', { name: 'Explore', exact: true }).click();
+  await page.getByRole('tab', { name: /Favourites/ }).click();
+  await expect(page.getByRole('list', { name: 'Catalogue results' })).toContainText('Sirius', { timeout: 10_000 });
+
+  await page.getByRole('tab', { name: 'Most extreme' }).click();
+  await expect(page.getByRole('list', { name: 'Catalogue results' })).toContainText('Heaviest stellar black hole');
+
+  await page.getByRole('tab', { name: 'Tours' }).click();
+  await page.getByRole('listitem').filter({ hasText: 'Top 10 extreme stars' }).getByRole('button', { name: 'Start tour' }).click();
+  const tour = page.getByRole('region', { name: 'Guided tour' });
+  await expect(tour).toContainText('The closest star: Proxima Centauri');
+  await expect(tour).toContainText('1 / 10');
+  await tour.getByRole('button', { name: 'Next stop' }).click();
+  await expect(tour).toContainText('2 / 10');
+  await expect(page.getByRole('complementary', { name: "Barnard's Star details" })).toBeVisible();
+  await tour.getByRole('button', { name: 'End tour' }).click();
+  await expect(tour).toBeHidden();
+
+  await page.getByRole('button', { name: 'Surprise me' }).click();
+  await expect(page.getByRole('complementary', { name: / details$/ })).toBeVisible();
 });

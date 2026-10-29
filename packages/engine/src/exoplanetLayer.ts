@@ -321,6 +321,7 @@ export class ExoplanetLayer {
       radiusKm: (h.radiusSun ?? 1) * R_SUN_KM,
       viewDistanceKm: outerAu * 3 * KM_PER_AU,
       provenance: 'catalog',
+      source: this.source(),
       facts: [`Its planets: ${h.planets.map((p) => p.name).join(', ')}.`],
       details,
       labelRange: (famous ? 40 : 0) * KM_PER_PC,
@@ -361,6 +362,7 @@ export class ExoplanetLayer {
       // Close enough that the planet fills a good part of the view, its star beyond.
       viewDistanceKm: radiusKm * 7,
       provenance: 'catalog',
+      source: `${this.source()} Surface: artist’s impression.`,
       facts: [
         ...planetFacts(p, e.host),
         'Surface shown is an artist’s impression from its size and temperature; orbital phase and orientation on the sky are not measured and are assumed.',
@@ -373,6 +375,10 @@ export class ExoplanetLayer {
   }
 
   private readonly scratch = new Vector3();
+
+  private source(): string {
+    return `NASA Exoplanet Archive, Planetary Systems Composite Parameters (retrieved ${this.catalog?.retrieved ?? 'unknown'}).`;
+  }
 
   /** Show markers only for hosts that pass a filter (null shows all); e.g. the discovery-year timeline. */
   setHostFilter(keep: ((h: ExoHost) => boolean) | null): void {

@@ -1,21 +1,8 @@
 import type { TargetSummary } from '@starhome/engine';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { KIND_LABEL } from '../catalog';
 import { useApp } from '../state/store';
 import { SearchIcon } from './icons';
-
-const KIND_LABEL: Record<TargetSummary['kind'], string> = {
-  star: 'Star',
-  planet: 'Planet',
-  'dwarf-planet': 'Dwarf planet',
-  moon: 'Moon',
-  'black-hole': 'Black hole',
-  cluster: 'Globular cluster',
-  nebula: 'Nebula',
-  exoplanet: 'Exoplanet',
-  'neutron-star': 'Neutron star',
-  galaxy: 'Galaxy',
-  region: 'Region',
-};
 
 /** Top search box; Ctrl/Cmd+K focuses it, Enter flies to the highlighted result. */
 export function Search() {

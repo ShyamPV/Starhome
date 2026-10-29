@@ -1,10 +1,19 @@
 import type { GeoLocation } from '@starhome/astro';
-import type { ExoplanetCatalog } from '@starhome/data';
+import type { ExoplanetCatalog, Tour } from '@starhome/data';
 import { DEFAULT_LOCATION, DEFAULT_SKY_LAYERS, type Engine, type Hud, type QualityPreset, type SkyLayers, type TargetSummary, type ViewMode } from '@starhome/engine';
 import { create } from 'zustand';
+import { loadUserData, saveFavourite, saveVisit, type Visit } from './userDb';
 
 export type NavSection = 'galaxy' | 'sky' | 'explore' | 'settings';
 export type Theme = 'default' | 'night' | 'contrast';
+export type ExploreTab = 'discover' | 'stars' | 'exoplanets' | 'tours';
+
+/** A guided tour in progress. */
+export interface ActiveTour {
+  tour: Tour;
+  index: number;
+  playing: boolean;
+}
 
 /** Simulation-time multipliers offered by the time bar (sign gives direction). */
 export const TIME_RATES = [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000] as const;
@@ -40,7 +49,14 @@ interface AppState {
   selected: TargetSummary | null;
   /** NASA Exoplanet Archive snapshot, once loaded. */
   exoplanets: ExoplanetCatalog | null;
-  exploreTab: 'stars' | 'exoplanets';
+  exploreTab: ExploreTab;
+  /** Favourite object ids, with when they were added (IndexedDB-backed). */
+  favourites: Record<string, number>;
+  /** Objects flown to, with when and how often (IndexedDB-backed). */
+  visited: Record<string, Visit>;
+  tour: ActiveTour | null;
+  /** A short confirmation shown at the bottom of the screen. */
+  toast: string | null;
   exoplanetMarkers: boolean;
   habitableZones: boolean;
   nav: NavSection;
@@ -79,6 +95,13 @@ interface AppState {
   toggleNav: () => void;
   setLocation: (loc: GeoLocation) => void;
   setSkyLayer: (layer: keyof SkyLayers, on: boolean) => void;
+  loadUser: () => Promise<void>;
+  toggleFavourite: (id: string) => void;
+  markVisited: (id: string) => void;
+  startTour: (tour: Tour) => void;
+  setTour: (patch: Partial<Pick<ActiveTour, 'index' | 'playing'>>) => void;
+  endTour: () => void;
+  showToast: (text: string) => void;
   set: (
     patch: Partial<Pick<AppState, 'view' | 'exploreTab' | 'exoplanetMarkers' | 'habitableZones' | 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'nebulae' | 'nebulaPalette' | 'nebulaBrightness' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>,
   ) => void;
@@ -90,7 +113,11 @@ export const useApp = create<AppState>((set, get) => ({
   targets: [],
   selected: null,
   exoplanets: null,
-  exploreTab: 'stars',
+  exploreTab: 'discover',
+  favourites: {},
+  visited: {},
+  tour: null,
+  toast: null,
   exoplanetMarkers: false,
   habitableZones: true,
   nav: 'galaxy',
@@ -129,5 +156,38 @@ export const useApp = create<AppState>((set, get) => ({
     set({ location });
   },
   setSkyLayer: (layer, on) => set((s) => ({ skyLayers: { ...s.skyLayers, [layer]: on } })),
+  loadUser: async () => {
+    const { favourites, visited } = await loadUserData();
+    // Merge with anything recorded before the database answered.
+    set((s) => ({
+      favourites: { ...Object.fromEntries(favourites.map((f) => [f.id, f.addedAt])), ...s.favourites },
+      visited: { ...Object.fromEntries(visited.map((v) => [v.id, v])), ...s.visited },
+    }));
+  },
+  toggleFavourite: (id) => {
+    const on = !(id in get().favourites);
+    set((s) => {
+      const favourites = { ...s.favourites };
+      if (on) favourites[id] = Date.now();
+      else delete favourites[id];
+      return { favourites };
+    });
+    void saveFavourite(id, on);
+  },
+  markVisited: (id) => {
+    const now = Date.now();
+    const prev = get().visited[id];
+    const v: Visit = prev ? { ...prev, lastAt: now, count: prev.count + 1 } : { id, firstAt: now, lastAt: now, count: 1 };
+    set((s) => ({ visited: { ...s.visited, [id]: v } }));
+    void saveVisit(v);
+  },
+  // The side panel would hide half the view: fold it away while the tour plays.
+  startTour: (tour) => set({ tour: { tour, index: 0, playing: true }, navOpen: false }),
+  setTour: (patch) => set((s) => (s.tour ? { tour: { ...s.tour, ...patch } } : {})),
+  endTour: () => set({ tour: null }),
+  showToast: (toast) => {
+    set({ toast });
+    window.setTimeout(() => set((s) => (s.toast === toast ? { toast: null } : {})), 2500);
+  },
   set: (patch) => set(patch),
 }));

@@ -4,13 +4,19 @@ import {
   SUN_ABS_MAG_V,
   SUN_GALACTOCENTRIC_PC,
   absoluteMagnitude,
+  bestAltitude,
+  bodySky,
   bvToTeff,
+  darkWindow,
   dateToJulian,
   galactocentricToLbd,
   raDecDistToGalactocentric,
   starPhysics,
   teffToLinearRgb,
+  windowSamples,
+  type DarkWindow,
   type GeoLocation,
+  type PlanetId,
   type LifeStage,
   type Vec3,
 } from '@starhome/astro';
@@ -51,12 +57,13 @@ import { ExposureMeter } from './exposure';
 import { ExoplanetLayer } from './exoplanetLayer';
 import { NebulaLayer } from './nebulaLayer';
 import { worldKmToGalPc } from './frames';
-import { SkyMode, type SkyHud, type TonightRow, type WhereToFind } from './skyMode';
+import { SkyMode, raDecOfGalactocentric, visibilityOf, type SkyHud, type TonightRow, type Visibility, type WhereToFind } from './skyMode';
 import type { SkyLayers } from './skyView';
 import { SolarSystem } from './solarSystem';
 import { createSharedStarUniforms, createStarMaterial, setFades } from './starMaterial';
 import { GridStreamer, StarBatch, starBatchFromBuffers, type GridLayerOptions } from './starLayers';
 import { buildTargets, starPhysicsDetails, type Target, type TargetKind } from './targets';
+import type { ViewState } from './viewState';
 
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra';
 
@@ -165,6 +172,8 @@ export interface Hud {
   view: ViewMode;
   /** Present in the sky view: the observer, the view direction and the Sun's altitude. */
   sky: SkyHud | null;
+  /** Name of the destination while a warp is under way. */
+  travellingTo: string | null;
 }
 
 /** Fly through the Galaxy, or stand on the Earth and look up. */
@@ -178,7 +187,31 @@ export interface TargetSummary {
   provenance: Target['provenance'];
   facts: string[];
   details: Record<string, string>;
+  source: string;
+  /** Distance from the Earth now, km. */
+  distanceKm: number;
+  radiusKm: number;
 }
+
+/** An object worth looking for tonight, with its best altitude in the dark hours. */
+export interface VisibleTonightRow {
+  id: string;
+  name: string;
+  kind: TargetKind;
+  /** Highest altitude while dark, degrees, and when (Julian date). */
+  alt: number;
+  jd: number;
+  mag: number;
+  visibility: Visibility;
+}
+
+export interface VisibleTonight {
+  /** The dark hours searched; null when the Sun does not set far enough (polar summer). */
+  window: DarkWindow | null;
+  rows: VisibleTonightRow[];
+}
+
+const SKY_BODIES: Exclude<PlanetId, 'earth' | 'pluto'>[] = ['mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
 
 export type LayerId = 'dust' | 'clusters' | 'arms' | 'nebulae' | 'exoplanets';
 
@@ -212,6 +245,8 @@ export interface EngineOptions {
   /** Called when targets are added after start-up (the exoplanet catalogue loads asynchronously). */
   onTargetsChanged?: (targets: TargetSummary[]) => void;
   onExoplanets?: (catalog: ExoplanetCatalog) => void;
+  /** Called when a flight reaches its destination (for "visited" tracking). */
+  onArrive?: (id: string) => void;
 }
 
 /** Real catalogue coverage: beyond this distance from the Sun the scene is mostly modeled. */
@@ -272,6 +307,11 @@ export class Engine {
   private readonly targetById = new Map<string, Target>();
   private readonly labelObjects = new Map<string, CSS2DObject>();
   private selected: Target | null = null;
+  /** Target the camera follows (while rig.follow is still its position function). */
+  private followId: string | null = null;
+  private travelling: Target | null = null;
+  /** A shared view naming objects that load later (exoplanets), applied once they do. */
+  private pendingView: ViewState | null = null;
   private quality: QualityPreset;
   private readonly seed: number;
   private exposure = 20;
@@ -358,11 +398,12 @@ export class Engine {
     }
 
     this.solar.update(this.jd);
-    const sun = this.solar.sunWorld;
-    this.rig.target.copy(sun);
+    const sun = this.targetById.get('sun')!;
+    this.rig.target.copy(sun.position());
     this.rig.distance = 25 * 149_597_870.7;
     this.rig.pitch = 0.45;
-    this.rig.follow = () => sun;
+    this.rig.follow = sun.position;
+    this.followId = 'sun';
 
     this.shared.uDustSteps.value = q.dustSteps;
     this.dustReady = this.loadDust();
@@ -438,6 +479,11 @@ export class Engine {
     }
     this.opts.onTargetsChanged?.(this.getTargets());
     this.opts.onExoplanets?.(catalog);
+    if (this.pendingView) {
+      const v = this.pendingView;
+      this.pendingView = null;
+      this.applyViewState({ ...v, jd: null });
+    }
   }
 
   private loadGlow(): void {
@@ -670,8 +716,10 @@ export class Engine {
       this.sky.setActive(false);
       this.skyDim = 1;
       // Back above the Earth, looking down on where we stood.
+      const earthTarget = this.targetById.get('earth')!;
       this.rig.target.copy(earth.world);
-      this.rig.follow = () => earth.world;
+      this.rig.follow = earthTarget.position;
+      this.followId = 'earth';
       this.rig.minDistance = earth.info.radiusKm * 1.05;
       this.rig.distance = Math.max(this.galaxyCamera?.distance ?? 0, earth.info.radiusKm * 4);
       if (this.galaxyCamera) {
@@ -717,30 +765,164 @@ export class Engine {
 
   /** All targets, for search and lists (details without the derived and modeled extras). */
   getTargets(): TargetSummary[] {
-    return this.targets.map((t) => ({ id: t.id, name: t.name, kind: t.kind, subtitle: t.subtitle, provenance: t.provenance, facts: t.facts, details: t.details }));
+    const earth = this.solar.bodies.get('earth')!.world;
+    return this.targets.map((t) => this.brief(t, earth));
+  }
+
+  private brief(t: Target, earth: Vector3): TargetSummary {
+    return {
+      id: t.id,
+      name: t.name,
+      kind: t.kind,
+      subtitle: t.subtitle,
+      provenance: t.provenance,
+      facts: t.facts,
+      details: t.details,
+      source: t.source,
+      distanceKm: t.id === 'earth' ? 0 : t.position().distanceTo(earth),
+      radiusKm: t.radiusKm,
+    };
+  }
+
+  /** Target id for an id that may be an exoplanet archive host id (named hosts use the star's id). */
+  resolveId(id: string): string {
+    return this.targetById.has(id) ? id : this.exoplanets.targetIdOf(id);
+  }
+
+  hasTarget(id: string): boolean {
+    return this.targetById.has(this.resolveId(id));
   }
 
   select(id: string | null): void {
-    this.selected = id ? (this.targetById.get(id) ?? null) : null;
-    for (const [tid, obj] of this.labelObjects) obj.element.classList.toggle('is-selected', tid === id);
+    const rid = id === null ? null : this.resolveId(id);
+    this.selected = rid ? (this.targetById.get(rid) ?? null) : null;
+    for (const [tid, obj] of this.labelObjects) obj.element.classList.toggle('is-selected', tid === rid);
     this.opts.onSelect?.(this.selected ? this.summary(this.selected) : null);
   }
 
-  flyTo(id: string): void {
-    const t = this.targetById.get(id);
-    if (!t) return;
-    this.select(id);
+  /** Warp to an object (or turn to it in the sky view). Resolves true on arrival, false if interrupted. */
+  flyTo(id: string, opts: { distanceKm?: number } = {}): Promise<boolean> {
+    const t = this.targetById.get(this.resolveId(id));
+    if (!t) return Promise.resolve(false);
+    this.select(t.id);
     if (this.viewMode === 'sky') {
       // From the ground "going there" means turning to look at it.
-      if (t.id === 'earth') return;
+      if (t.id === 'earth') return Promise.resolve(false);
       const { alt, az } = this.sky.altAzOf(t.position());
       // Below the horizon: face the point where it will rise rather than the ground.
       this.rig.lookAt(alt > 0 ? alt : 12, az);
-      return;
+      return Promise.resolve(true);
     }
     this.rig.minDistance = Math.max(0.001, t.radiusKm * 1.05);
     const from = t.approachFrom ? CameraRig.anglesFor(t.approachFrom) : null;
-    this.rig.flyTo(t.position, t.viewDistanceKm, from ? { pitch: from.pitch, yaw: from.yaw } : { pitch: t.pitch });
+    this.travelling = t;
+    this.followId = t.id;
+    return this.rig.flyTo(t.position, opts.distanceKm ?? t.viewDistanceKm, from ? { pitch: from.pitch, yaw: from.yaw } : { pitch: t.pitch }).then((arrived) => {
+      if (this.travelling === t) this.travelling = null;
+      if (arrived) this.opts.onArrive?.(t.id);
+      return arrived;
+    });
+  }
+
+  /** Slow orbit around the current target while idle, rad/s (0 stops; off with reduced motion). */
+  setAutoRotate(radPerS: number): void {
+    this.rig.autoRotate = this.rig.reducedMotion ? 0 : radPerS;
+  }
+
+  /** The current view, for a shareable link. */
+  getViewState(): ViewState {
+    const base = { jd: this.jd, selected: this.selected?.id ?? null, distanceKm: this.rig.distance, yaw: this.rig.yaw, pitch: this.rig.pitch };
+    if (this.viewMode === 'sky') {
+      const loc = this.sky.location;
+      const { az, alt, fov } = this.rig.sky;
+      return { ...base, view: 'sky', anchor: null, offsetKm: null, sky: { location: { latDeg: loc.latDeg, lonDeg: loc.lonDeg }, az, alt, fov } };
+    }
+    const followed = this.followId ? this.targetById.get(this.followId) : undefined;
+    let anchor: Target | undefined = followed && this.rig.follow === followed.position ? followed : undefined;
+    let offsetKm: Vec3 | null = null;
+    if (!anchor) {
+      // Free camera: measure from the nearest object for precision.
+      let best = Infinity;
+      for (const t of this.targets) {
+        const d = t.position().distanceToSquared(this.rig.target);
+        if (d < best) {
+          best = d;
+          anchor = t;
+        }
+      }
+      const o = this.rig.target.clone().sub(anchor!.position());
+      offsetKm = [o.x, o.y, o.z];
+    }
+    return { ...base, view: 'galaxy', anchor: anchor?.id ?? null, offsetKm, sky: null };
+  }
+
+  /**
+   * Restore a shared view. The caller switches the view mode and location; objects that
+   * have not loaded yet (exoplanets) are applied when their catalogue arrives.
+   */
+  applyViewState(v: ViewState): void {
+    if (v.jd !== null) this.jd = v.jd;
+    const missing = (id: string | null) => id !== null && !this.hasTarget(id);
+    if ((missing(v.anchor) || missing(v.selected)) && this.opts.exoplanetsUrl && !this.exoplanets.catalog) this.pendingView = v;
+    if (v.selected && this.hasTarget(v.selected)) this.select(v.selected);
+    if (v.view === 'sky' && v.sky) {
+      this.rig.sky.az = v.sky.az;
+      this.rig.sky.alt = v.sky.alt;
+      this.rig.sky.fov = v.sky.fov;
+      return;
+    }
+    const t = v.anchor ? this.targetById.get(this.resolveId(v.anchor)) : undefined;
+    if (!t) return;
+    this.rig.cancelFlight();
+    this.solar.update(this.jd);
+    this.exoplanets.jd = this.jd;
+    this.rig.target.copy(t.position());
+    if (v.offsetKm) {
+      this.rig.target.add(new Vector3(...v.offsetKm));
+      this.rig.follow = null;
+      this.followId = null;
+      this.rig.minDistance = 0.001;
+    } else {
+      this.rig.follow = t.position;
+      this.followId = t.id;
+      this.rig.minDistance = Math.max(0.001, t.radiusKm * 1.05);
+    }
+    this.rig.distance = v.distanceKm;
+    this.rig.yaw = v.yaw;
+    this.rig.pitch = v.pitch;
+  }
+
+  /**
+   * Objects worth looking for in the coming night from the observer's location: the
+   * planets and Moon, named stars, nebulae and clusters brighter than V 10 that climb at
+   * least `minAlt` degrees while it is dark. Brightest first.
+   */
+  visibleTonight(minAlt = 20): VisibleTonight {
+    const loc = this.sky.location;
+    const win = darkWindow(this.jd, loc);
+    if (!win) return { window: null, rows: [] };
+    const samples = windowSamples(win, loc);
+    const rows: VisibleTonightRow[] = [];
+    for (const t of this.targets) {
+      if (t.apparentMag === undefined || t.apparentMag > 10 || t.obscured || !t.galPc) continue;
+      if (!(t.star || t.kind === 'nebula' || t.kind === 'cluster')) continue;
+      const { ra, dec } = raDecOfGalactocentric(t.galPc);
+      const best = bestAltitude(ra, dec, loc.latDeg, samples);
+      if (best.alt >= minAlt) rows.push({ id: t.id, name: t.name, kind: t.kind, alt: best.alt, jd: best.jd, mag: t.apparentMag, visibility: visibilityOf(t.apparentMag)! });
+    }
+    // Moving bodies: sample their own positions (a coarser grid keeps this quick).
+    const coarse = samples.filter((_, i) => i % 2 === 0);
+    for (const id of [...SKY_BODIES, 'moon'] as const) {
+      const t = this.targetById.get(id)!;
+      let best: VisibleTonightRow | null = null;
+      for (const smp of coarse) {
+        const b = bodySky(id, smp.jd, loc);
+        if (b.mag !== null && b.alt >= minAlt && (!best || b.alt > best.alt)) best = { id, name: t.name, kind: t.kind, alt: b.alt, jd: smp.jd, mag: b.mag, visibility: visibilityOf(b.mag)! };
+      }
+      if (best && best.mag <= 10) rows.push(best);
+    }
+    rows.sort((a, b) => a.mag - b.mag);
+    return { window: win, rows };
   }
 
   /** Modeled V-band extinction from the Sun to a Galactocentric point (pc), or null before the dust map loads. */
@@ -754,7 +936,7 @@ export class Engine {
     const av = t.galPc && t.kind !== 'region' ? this.extinctionFromSun(t.galPc) : null;
     const details = t.star ? { ...t.details, ...starPhysicsDetails(t.star, av) } : { ...t.details };
     if (av !== null) details['Extinction from Sun (model)'] = `A_V ≈ ${av < 10 ? av.toFixed(2) : av.toFixed(0)} mag`;
-    return { id: t.id, name: t.name, kind: t.kind, subtitle: t.subtitle, provenance: t.provenance, facts: t.facts, details };
+    return { ...this.brief(t, this.solar.bodies.get('earth')!.world), details };
   }
 
   // --- Frame loop -------------------------------------------------------------------
@@ -937,6 +1119,7 @@ export class Engine {
       ],
       view: this.viewMode,
       sky: sky ? this.sky.hud(this.rig.sky.alt, this.rig.sky.az, this.rig.sky.fov) : null,
+      travellingTo: this.travelling && this.rig.flying ? this.travelling.name : null,
     };
   }
 

@@ -1,7 +1,9 @@
 import { SIZE_CLASS_LABEL, type Exoplanet, type ExoplanetCatalog, type SizeClass } from '@starhome/data';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../state/store';
+import { DiscoverTab } from './DiscoverTab';
 import { HrDiagram } from './HrDiagram';
+import { ToursTab } from './ToursTab';
 
 const CLASS_COLOR: Record<SizeClass, string> = {
   rocky: '#c9a27a',
@@ -270,16 +272,18 @@ function ExoplanetsTab() {
   );
 }
 
-/** Explore: the star catalogue with its HR diagram, and the exoplanet catalogue. */
+/** Explore: the catalogue hub, the star catalogue with its HR diagram, the exoplanet catalogue and tours. */
 export function ExplorePanel() {
   const { exploreTab, set } = useApp();
   return (
     <>
-      <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1" role="tablist">
+      <div className="mb-3 grid grid-cols-4 gap-1 rounded-xl bg-white/5 p-1" role="tablist">
         {(
           [
+            ['discover', 'Discover'],
             ['stars', 'Stars'],
             ['exoplanets', 'Exoplanets'],
+            ['tours', 'Tours'],
           ] as const
         ).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={exploreTab === id} onClick={() => set({ exploreTab: id })} className={`rounded-lg py-1 text-xs ${exploreTab === id ? 'bg-violet/40 text-white' : 'text-ink-dim hover:text-ink'}`}>
@@ -287,7 +291,10 @@ export function ExplorePanel() {
           </button>
         ))}
       </div>
-      {exploreTab === 'stars' ? <StarsTab /> : <ExoplanetsTab />}
+      {exploreTab === 'discover' && <DiscoverTab />}
+      {exploreTab === 'stars' && <StarsTab />}
+      {exploreTab === 'exoplanets' && <ExoplanetsTab />}
+      {exploreTab === 'tours' && <ToursTab />}
     </>
   );
 }

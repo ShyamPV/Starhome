@@ -1,20 +1,25 @@
-import { Hud, LoadingPill, ScaleBar } from './components/Hud';
+import { Hud, LoadingPill, ScaleBar, WarpPill } from './components/Hud';
 import { InfoPanel } from './components/InfoPanel';
 import { NavRail, useEngineSettings } from './components/NavRail';
 import { Search } from './components/Search';
 import { TimeBar } from './components/TimeBar';
+import { Toast, TopActions } from './components/TopActions';
+import { TourPlayer } from './components/TourPlayer';
 import { Viewport } from './components/Viewport';
+import { useUrlSync } from './state/urlSync';
 
 export function App() {
   useEngineSettings();
+  useUrlSync();
   return (
     <main className="relative h-full w-full select-none">
       <Viewport />
       <div className="pointer-events-none absolute inset-0 flex flex-col p-4">
         <header className="flex items-start gap-4">
           <div className="pointer-events-auto flex-1">
-            <div className="flex items-center justify-center pl-16">
+            <div className="flex items-center justify-center gap-2 pl-16">
               <Search />
+              <TopActions />
             </div>
           </div>
         </header>
@@ -24,6 +29,9 @@ export function App() {
         <footer className="mt-3 flex items-end justify-between gap-4">
           <Hud />
           <div className="flex flex-col items-center gap-2">
+            <TourPlayer />
+            <Toast />
+            <WarpPill />
             <LoadingPill />
             <TimeBar />
           </div>

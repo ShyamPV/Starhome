@@ -1,6 +1,7 @@
 import type { WhereToFind } from '@starhome/engine';
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/store';
+import { FavouriteButton } from './DiscoverTab';
 import { CloseIcon } from './icons';
 import { formatAltAz, formatLatLon, formatRaDec, formatTime } from './skyFormat';
 
@@ -75,17 +76,26 @@ export function InfoPanel() {
   const selected = useApp((s) => s.selected);
   const engine = useApp((s) => s.engine);
   const view = useApp((s) => s.view);
+  const visits = useApp((s) => (selected ? s.visited[selected.id]?.count : undefined));
   if (!selected) return null;
   const prov = PROVENANCE[selected.provenance];
 
   return (
     <aside className="glass pointer-events-auto absolute top-20 right-4 z-20 flex max-h-[calc(100%-11rem)] w-80 flex-col overflow-hidden rounded-2xl" aria-label={`${selected.name} details`}>
       <header className="flex items-start justify-between gap-2 border-b border-line px-4 pt-4 pb-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold tracking-tight">{selected.name}</h2>
           <p className="mt-0.5 text-xs text-ink-dim">{selected.subtitle}</p>
-          <span className={`mt-2 inline-block rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase ${prov.cls}`}>{prov.label}</span>
+          <div className="mt-2 flex flex-wrap gap-1">
+            <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase ${prov.cls}`}>{prov.label}</span>
+            {visits !== undefined && (
+              <span className="inline-block rounded-full border border-line px-2 py-0.5 text-[10px] font-medium tracking-wide text-ink-dim uppercase" title={`Visited ${visits} time${visits === 1 ? '' : 's'} in this browser`}>
+                Visited
+              </span>
+            )}
+          </div>
         </div>
+        <FavouriteButton t={selected} />
         <button onClick={() => engine?.select(null)} className="rounded-lg p-1 text-ink-dim hover:bg-white/5 hover:text-ink" aria-label="Close details">
           <CloseIcon width={18} height={18} />
         </button>
@@ -112,8 +122,11 @@ export function InfoPanel() {
         )}
       </div>
       <footer className="border-t border-line p-3">
+        <p className="mb-2 text-[10px] leading-snug text-ink-faint">
+          <span className="font-semibold tracking-wide uppercase">Source</span> {selected.source}
+        </p>
         <button
-          onClick={() => engine?.flyTo(selected.id)}
+          onClick={() => void engine?.flyTo(selected.id)}
           className="w-full rounded-xl bg-gradient-to-r from-violet-deep to-violet py-2 text-sm font-medium text-white shadow-[0_0_24px_-6px] shadow-violet/60 transition hover:brightness-110"
         >
           {view === 'sky' ? 'Point to it' : 'Go there'}

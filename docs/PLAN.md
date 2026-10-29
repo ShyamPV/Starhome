@@ -18,7 +18,7 @@ scope: `@starhome/*`.
 | 3 | Ephemerides worker (VSOP87/ELP), Sky view, constellations, SGP4 satellites, time controls, HUD | **Done** (see below) |
 | 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | **Done** (see below) |
 | 5 | Stars catalogue and HR diagram; exoplanet catalogue and 3D systems | **Done** (see below) |
-| 6 | Free travel polish, tours, Explore tab, shareable URLs | Warp-to and search done |
+| 6 | Free travel polish, tours, Explore tab, shareable URLs | **Done** (see below) |
 | 7 | Polish, performance, PWA/offline, theming, README attributions | Themes done |
 
 ## Rendering a hundred-million-star galaxy in the browser
@@ -123,6 +123,39 @@ licensing decision), atmospheric extinction near the horizon, and light pollutio
   hosting) that cannot be built or verified without network access to the archives;
   the blending hook (`realCatalogMagLimit`, extinction-aware) is ready for it.
 - *IndexedDB caching of generated layers* and *WebGPU culling* (deliverable 7, perf).
+
+### Deliverable 6: what landed
+
+- **Shareable links:** the URL fragment encodes the view mode, time (omitted while it
+  follows the clock), selection and camera. The camera is stored relative to the target
+  it follows, or the nearest object with a 9-digit offset, so a link keeps kilometre
+  precision beside a planet and still fits in a URL in the halo. Links naming exoplanets
+  wait for the catalogue to load. Sky-view links carry the place rounded to 0.1°. The
+  address bar is rewritten once a second with `history.replaceState` (no history spam);
+  pasting another link applies it. Codec in `packages/engine/src/viewState.ts`, tested.
+- **Tours:** journey to the galactic centre (Sun, Orion Spur, Lagoon Nebula in the
+  Sagittarius-Carina arm, Scutum-Centaurus, Norma, the bar and bulge, Sgr A*), the great
+  nebulae (ten), the closest exoplanet systems (built from the archive snapshot, so it
+  updates with it) and the top 10 extreme stars. The player flies to each stop, shows the
+  narration, orbits slowly for reading time, then moves on; taking the controls pauses it;
+  reduced motion turns off the orbit and the flight animation. Every stop id is checked
+  against the real targets in a test.
+- **Explore hub (Discover):** object of the day (same for everyone on a date), every object
+  in one virtualized, searchable list with category filters, and curated lists:
+  highlights, closest to Earth, visible tonight (objects brighter than V 10 that climb 20°
+  after nautical dusk, from `packages/astro/src/visibility.ts`), most extreme, favourites
+  and visited (IndexedDB via Dexie; falls back to memory when storage is blocked). Object
+  panels gain a favourite toggle, a "Visited" mark and a source citation. Category dots use
+  the validated categorical palette (dark surface) and always sit beside a text label.
+- **Free travel:** "Surprise me" (a category first, then an object, so clusters and
+  exoplanets don't crowd out the rest), a warp read-out with destination and speed in c,
+  and `flyTo` now resolves when the camera arrives (which drives tours and "visited").
+- **Fixed along the way:** the Galactic bar and bulge is now a destination in its own
+  right; tour stops can set their own camera distance (the tour starts with the planetary
+  system, not the solar disc).
+
+**Not yet:** images per object (licensing), a command palette with actions beyond search,
+"visible tonight" in the observer's own time zone (times follow the browser's zone).
 
 ### Deliverable 5: what landed
 

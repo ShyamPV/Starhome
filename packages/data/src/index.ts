@@ -6,3 +6,4 @@ export * from './constellations';
 export * from './tle';
 export * from './exoplanets';
 export * from './compactObjects';
+export * from './tours';

@@ -122,3 +122,17 @@ export function LoadingPill() {
     </div>
   );
 }
+
+/** While a warp is under way: where to, and how fast (in multiples of c beyond 0.01 c). */
+export function WarpPill() {
+  const to = useApp((s) => s.hud?.travellingTo);
+  const speed = useApp((s) => s.hud?.speedKmS ?? 0);
+  if (!to) return null;
+  return (
+    <div className="glass pointer-events-none flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] text-ink-dim" role="status">
+      <span className="size-1.5 rounded-full bg-violet" />
+      Warping to <span className="text-ink">{to}</span>
+      <span className="tabular font-mono text-ink">{formatSpeed(speed)}</span>
+    </div>
+  );
+}

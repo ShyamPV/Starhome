@@ -8,7 +8,8 @@ export function Viewport() {
   const labelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const { quality, setHud, setSelected, setEngine, setTargets, setExoplanets } = useApp.getState();
+    const { quality, setHud, setSelected, setEngine, setTargets, setExoplanets, markVisited, loadUser } = useApp.getState();
+    void loadUser();
     const engine = new Engine({
       canvas: canvasRef.current!,
       labelRoot: labelRef.current!,
@@ -19,6 +20,7 @@ export function Viewport() {
       exoplanetsUrl: `${import.meta.env.BASE_URL}data/exoplanets.json`,
       onTargetsChanged: setTargets,
       onExoplanets: setExoplanets,
+      onArrive: markVisited,
     });
     engine.setLocation(useApp.getState().location);
     setEngine(engine);

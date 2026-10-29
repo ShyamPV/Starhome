@@ -96,3 +96,40 @@ export const ChevronIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="m15 6-6 6 6 6" />
   </svg>
 );
+
+export const DiceIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="4" y="4" width="16" height="16" rx="3" />
+    <circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="9" cy="15" r="1.1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const LinkIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+    <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+  </svg>
+);
+
+export const StarIcon = ({ filled, ...p }: SVGProps<SVGSVGElement> & { filled?: boolean }) => (
+  <svg {...base(p)}>
+    <path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={filled ? 'currentColor' : 'none'} />
+  </svg>
+);
+
+export const NextIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M7 6l7 6-7 6" />
+    <path d="M17 6v12" />
+  </svg>
+);
+
+export const PrevIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M17 6l-7 6 7 6" />
+    <path d="M7 6v12" />
+  </svg>
+);
