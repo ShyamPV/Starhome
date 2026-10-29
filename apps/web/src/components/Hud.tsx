@@ -1,5 +1,7 @@
 import { KM_PER_UNIT, bestDistanceUnit, formatDistance, formatSpeed } from '@starhome/astro';
+import type { Hud as HudData } from '@starhome/engine';
 import { useApp } from '../state/store';
+import { formatAltAz, formatLatLon, formatRaDec, skyCondition } from './skyFormat';
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
@@ -10,10 +12,35 @@ function Row({ k, v }: { k: string; v: string }) {
   );
 }
 
+/** Sky-view read-out: where the observer stands and where the view points. */
+function SkyHud({ hud }: { hud: HudData }) {
+  const sky = hud.sky!;
+  return (
+    <section className="glass pointer-events-auto w-72 rounded-2xl px-4 py-3 text-xs" aria-label="Sky position">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="truncate text-sm font-semibold tracking-tight">{formatLatLon(sky.location.latDeg, sky.location.lonDeg)}</h2>
+        <span className="shrink-0 rounded-full border border-violet/40 bg-violet/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-violet uppercase">{skyCondition(sky.sunAlt)}</span>
+      </div>
+      <div className="space-y-1">
+        <Row k="Looking at" v={formatAltAz(sky.viewAlt, sky.viewAz)} />
+        <Row k="RA, Dec (J2000)" v={formatRaDec(sky.viewRa, sky.viewDec)} />
+        <Row k="Constellation" v={sky.constellation} />
+        <Row k="Field of view" v={`${sky.fovDeg.toFixed(sky.fovDeg < 10 ? 1 : 0)}°`} />
+        <Row k="Sun altitude" v={`${sky.sunAlt.toFixed(1)}°`} />
+      </div>
+      <div className="mt-2 flex justify-between border-t border-line pt-2 text-[10px] text-ink-faint">
+        <span className="tabular font-mono">{Math.round(hud.fps)} fps</span>
+        <span>{sky.satellites > 0 ? `${sky.satellites} satellites tracked` : 'Satellites: loading or offline'}</span>
+      </div>
+    </section>
+  );
+}
+
 /** Galactic position read-out: (l, b, d), Galactocentric (x, y, z), region, nearest object, speed. */
 export function Hud() {
   const hud = useApp((s) => s.hud);
   if (!hud) return null;
+  if (hud.view === 'sky' && hud.sky) return <SkyHud hud={hud} />;
   const [x, y, z] = hud.galactocentricPc.map((c) => c / 1000);
   const dPcKm = hud.dPc * KM_PER_UNIT.pc;
 

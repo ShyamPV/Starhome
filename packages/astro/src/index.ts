@@ -4,3 +4,5 @@ export * from './coords';
 export * from './planets';
 export * from './moon';
 export * from './photometry';
+export * from './ephemeris';
+export * from './satellites';

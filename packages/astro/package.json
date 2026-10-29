@@ -6,5 +6,9 @@
   "description": "Pure astronomy math: units, time scales, coordinate frames, ephemerides.",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "astronomy-engine": "2.1.19",
+    "satellite.js": "7.1.0"
   }
 }

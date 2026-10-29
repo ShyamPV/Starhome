@@ -4,6 +4,7 @@ import { generateCell } from './cells';
 import { generateClusterStars } from './clusters';
 import { buildDustMap } from './dust';
 import { generateGlow } from './glow';
+import { generateNebula } from './nebulae';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { generateTile } from './tiles';
 
@@ -35,6 +36,11 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       case 'cluster': {
         const buffers = generateClusterStars(msg.request);
         respond({ id: msg.id, type: 'cluster', buffers }, [...transferables(buffers.stars), ...transferables(buffers.haze)]);
+        break;
+      }
+      case 'nebula': {
+        const buffers = generateNebula(msg.request);
+        respond({ id: msg.id, type: 'nebula', buffers }, [buffers.data.buffer]);
         break;
       }
       case 'dust': {

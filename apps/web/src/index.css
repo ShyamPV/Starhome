@@ -89,6 +89,13 @@ body,
 .vl-label--cluster::before {
   border-style: dotted;
 }
+.vl-label--nebula {
+  color: rgb(255 140 170 / 0.85);
+}
+.vl-label--nebula::before {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
 /* Spiral arms: large structures, labelled in spaced small caps without a marker. */
 .vl-label--region {
   padding-left: 4px;
@@ -100,6 +107,36 @@ body,
 }
 .vl-label--region::before {
   display: none;
+}
+
+/* Sky view labels (non-interactive) */
+.vl-cardinal {
+  font: 700 13px/1 var(--font-sans);
+  letter-spacing: 0.08em;
+  color: rgb(61 214 198 / 0.9);
+  text-shadow: 0 0 6px #000;
+}
+.vl-cardinal--minor {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgb(61 214 198 / 0.55);
+}
+.vl-const-label {
+  font: 500 10px/1 var(--font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(143 180 255 / 0.55);
+  text-shadow: 0 0 4px #000;
+  white-space: nowrap;
+}
+.vl-const-label--rank1 {
+  color: rgb(143 180 255 / 0.75);
+}
+.vl-sat-label {
+  font: 600 10px/1 var(--font-sans);
+  color: rgb(255 255 255 / 0.85);
+  text-shadow: 0 0 4px #000;
+  white-space: nowrap;
 }
 
 /* Themes */

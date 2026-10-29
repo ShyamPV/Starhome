@@ -8,7 +8,7 @@
  * parallaxes) near the Sun. Segments beyond the measured azimuth ranges, in particular
  * the far side of the Galaxy, are extrapolations and are flagged as modeled.
  */
-import { DEG, R0_PC, galacticToEquatorial, sphericalToCartesian, raDecDistToGalactocentric } from '@starhome/astro';
+import { DEG, R0_PC, equatorialToGalactic, galacticToEquatorial, sphericalToCartesian, raDecDistToGalactocentric, type Vec3 } from '@starhome/astro';
 import { LIGHT_TO_MASS } from './populations';
 import { valueNoise } from './rng';
 
@@ -277,8 +277,11 @@ export function componentDensities(x: number, y: number, z: number, armSum = arm
 // --- Satellites ---------------------------------------------------------------------
 
 export type SatelliteShape =
-  /** Inclined exponential disc plus a Gaussian bar, in the satellite's own frame (kpc). */
-  | { kind: 'disc'; rd: number; hz: number; barFraction: number; bar: [number, number, number]; tiltDeg: number; spinDeg: number }
+  /**
+   * Inclined exponential disc plus a Gaussian bar, in the satellite's own frame (kpc):
+   * x along the line of nodes, z the disc normal (Galactocentric unit vectors).
+   */
+  | { kind: 'disc'; rd: number; hz: number; barFraction: number; bar: [number, number, number]; axes: [Vec3, Vec3, Vec3] }
   /** Triaxial Gaussian; `axis` is the unit vector of the long axis (sigma[2]). */
   | { kind: 'gaussian'; sigma: [number, number, number]; axis: [number, number, number] };
 
@@ -312,6 +315,30 @@ function unitFromSun(c: [number, number, number]): [number, number, number] {
   return [d[0] / n, d[1] / n, d[2] / n];
 }
 
+/**
+ * Axes of a disc seen from the Sun with inclination i (0 = face-on) and the line of nodes
+ * at position angle pa (from celestial north through east), as observers report them.
+ */
+function inclinedDiscAxes(center: Vec3, inclinationDeg: number, nodesPaDeg: number): [Vec3, Vec3, Vec3] {
+  const u = unitFromSun(center);
+  const ncp = equatorialToGalactic([0, 0, 1]);
+  const along = ncp[0] * u[0] + ncp[1] * u[1] + ncp[2] * u[2];
+  const n0: Vec3 = [ncp[0] - along * u[0], ncp[1] - along * u[1], ncp[2] - along * u[2]];
+  const nl = Math.hypot(...n0);
+  const north: Vec3 = [n0[0] / nl, n0[1] / nl, n0[2] / nl];
+  const east = cross(north, u);
+  const pa = nodesPaDeg * DEG;
+  const nodes: Vec3 = [0, 1, 2].map((k) => Math.cos(pa) * north[k]! + Math.sin(pa) * east[k]!) as Vec3;
+  const perp: Vec3 = [0, 1, 2].map((k) => -Math.sin(pa) * north[k]! + Math.cos(pa) * east[k]!) as Vec3;
+  const inc = inclinationDeg * DEG;
+  const normal: Vec3 = [0, 1, 2].map((k) => -Math.cos(inc) * u[k]! + Math.sin(inc) * perp[k]!) as Vec3;
+  return [nodes, cross(normal, nodes), normal];
+}
+
+function cross(a: Vec3, b: Vec3): Vec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+
 const LMC_CENTER = lbdToGalactocentricKpc(280.47, -32.89, 49.6);
 const SMC_CENTER = lbdToGalactocentricKpc(302.8, -44.3, 62.4);
 const SGR_CENTER = lbdToGalactocentricKpc(5.6, -14.2, 26.5);
@@ -332,7 +359,9 @@ export const SATELLITES: readonly Satellite[] = [
     radius: 4.5,
     luminosity: 1.5e9,
     mix: { young: 0.012, thin: 0.788, old: 0.2 },
-    shape: { kind: 'disc', rd: 1.4, hz: 0.25, barFraction: 0.2, bar: [1.4, 0.35, 0.25], tiltDeg: 35, spinDeg: 20 },
+    // Inclined ~30 deg to the line of sight, line of nodes at PA ~140 deg (approximately van der
+    // Marel & Kallivayalil 2014), so it looks like the familiar oval from the southern hemisphere.
+    shape: { kind: 'disc', rd: 1.4, hz: 0.25, barFraction: 0.2, bar: [1.4, 0.35, 0.25], axes: inclinedDiscAxes(LMC_CENTER, 30, 140) },
   }),
   satellite({
     id: 'smc',
@@ -358,19 +387,13 @@ export const SATELLITES: readonly Satellite[] = [
 
 /** Rotate a satellite-frame offset into the Galactocentric frame (disc satellites). */
 export function satelliteToGalactocentric(shape: Extract<SatelliteShape, { kind: 'disc' }>, d: [number, number, number]): [number, number, number] {
-  const t = shape.tiltDeg * DEG;
-  const p = shape.spinDeg * DEG;
-  const y1 = d[1] * Math.cos(t) - d[2] * Math.sin(t);
-  const z1 = d[1] * Math.sin(t) + d[2] * Math.cos(t);
-  return [d[0] * Math.cos(p) - y1 * Math.sin(p), d[0] * Math.sin(p) + y1 * Math.cos(p), z1];
+  const [x, y, z] = shape.axes;
+  return [0, 1, 2].map((k) => d[0] * x[k]! + d[1] * y[k]! + d[2] * z[k]!) as [number, number, number];
 }
 
 function galactocentricToSatellite(shape: Extract<SatelliteShape, { kind: 'disc' }>, d: [number, number, number]): [number, number, number] {
-  const t = shape.tiltDeg * DEG;
-  const p = shape.spinDeg * DEG;
-  const x0 = d[0] * Math.cos(p) + d[1] * Math.sin(p);
-  const y1 = -d[0] * Math.sin(p) + d[1] * Math.cos(p);
-  return [x0, y1 * Math.cos(t) + d[2] * Math.sin(t), -y1 * Math.sin(t) + d[2] * Math.cos(t)];
+  const dot = (a: Vec3) => d[0] * a[0] + d[1] * a[1] + d[2] * a[2];
+  return [dot(shape.axes[0]), dot(shape.axes[1]), dot(shape.axes[2])];
 }
 
 const TWO_PI_3_2 = (2 * Math.PI) ** 1.5;

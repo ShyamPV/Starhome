@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { SUN_GALACTOCENTRIC_PC, raDecDistToGalactocentric, type Vec3 } from '@starhome/astro';
 import { GLOBULAR_CLUSTERS } from '@starhome/data';
-import { buildDustMap, extinctionV, generateGlow } from '@starhome/galaxy';
+import { NEBULAE, buildDustMap, extinctionV, generateGlow } from '@starhome/galaxy';
 import { ExposureMeter } from '../src/exposure';
+import { nebulaAxes, surfaceBrightnessGain } from '../src/nebulaLayer';
 
 describe('automatic exposure', () => {
   const meter = new ExposureMeter();
@@ -82,5 +83,27 @@ describe('Harris globular clusters', () => {
     const median = ratios[ratios.length >> 1]!;
     expect(median).toBeGreaterThan(0.4);
     expect(median).toBeLessThan(1.5);
+  });
+});
+
+describe('nebulae', () => {
+  it('expose faint nebulae more than bright ones, keeping their order', () => {
+    const g = (id: string) => surfaceBrightnessGain(NEBULAE.find((n) => n.id === id)!);
+    // Ring Nebula is compact and bright, the Orion Nebula brighter overall, the Veil very faint.
+    expect(g('m57')).toBeLessThan(g('m42'));
+    expect(g('m42')).toBeLessThan(g('veil'));
+  });
+
+  it('orients each volume with +z toward the Sun and orthonormal axes', () => {
+    const n = NEBULAE.find((x) => x.id === 'm1')!;
+    const c = raDecDistToGalactocentric(n.ra, n.dec, n.distPc);
+    const [x, y, z] = nebulaAxes(c, n.paDeg);
+    const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    expect(dot(x, y)).toBeCloseTo(0, 9);
+    expect(dot(y, z)).toBeCloseTo(0, 9);
+    expect(dot(x, x)).toBeCloseTo(1, 9);
+    const s = SUN_GALACTOCENTRIC_PC;
+    const toSun: Vec3 = [s[0] - c[0], s[1] - c[1], s[2] - c[2]];
+    expect(dot(z, toSun) / Math.hypot(...toSun)).toBeCloseTo(1, 9);
   });
 });

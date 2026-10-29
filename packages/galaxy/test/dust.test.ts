@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SUN_GALACTOCENTRIC_PC, sphericalToCartesian, type Vec3 } from '@starhome/astro';
-import { BUBBLE_CENTER_KPC, DUST, buildDustMap, extinctionV, midplaneExtinction, reddeningFactors, sampleDustMap } from '../src';
+import { BUBBLE_CENTER_KPC, CLOUD_PARAMS, DUST, buildDustMap, cloudExtinction, extinctionV, midplaneExtinction, reddeningFactors, sampleDustMap } from '../src';
 
 const map = buildDustMap();
 const sun = SUN_GALACTOCENTRIC_PC.map((c) => c / 1000) as Vec3;
@@ -45,8 +45,8 @@ describe('dust calibration (V-band extinction)', () => {
     expect(toward(0, -90, 50)).toBeLessThan(0.1);
   });
 
-  it('averages ~0.4-1.2 mag/kpc in the plane near the Sun', () => {
-    for (const l of [0, 60, 90, 120, 180, 240, 300]) {
+  it('averages ~0.4-1.2 mag/kpc in the plane near the Sun, away from the named clouds', () => {
+    for (const l of [0, 60, 90, 120, 180, 240, 330]) {
       const av = toward(l, 0, 1);
       expect(av).toBeGreaterThan(0.35);
       expect(av).toBeLessThan(1.2);
@@ -107,5 +107,35 @@ describe('dust integration', () => {
       expect(extinctionV(map, a, b)).toBeCloseTo(ref, ref > 1 ? 0 : 1);
       expect(Math.abs(extinctionV(map, a, b, 10) - ref)).toBeLessThan(0.15 * ref + 0.02);
     }
+  });
+});
+
+describe('nearby clouds (Gould Belt, Local Bubble wall)', () => {
+  it('darken the Coalsack by its measured ~1.5 mag', () => {
+    const through = toward(301, -1, 1) - toward(301, -12, 1);
+    expect(through).toBeGreaterThan(1);
+  });
+
+  it('integrate in closed form exactly like a brute-force march', () => {
+    const brute = (a: Vec3, b: Vec3) => {
+      const n = 20_000;
+      let sum = 0;
+      for (const cl of CLOUD_PARAMS) {
+        const rho0 = cl.k / (cl.sigma * Math.sqrt(Math.PI / 2));
+        for (let i = 0; i < n; i++) {
+          const t = (i + 0.5) / n;
+          const p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+          const r2 = (p[0]! - cl.center[0]) ** 2 + (p[1]! - cl.center[1]) ** 2 + (p[2]! - cl.center[2]) ** 2;
+          sum += (rho0 * Math.exp(-r2 / (2 * cl.sigma * cl.sigma)) * Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])) / n;
+        }
+      }
+      return sum;
+    };
+    const rays: [Vec3, Vec3][] = [
+      [sun, [sun[0] + 0.5, sun[1] - 0.6, sun[2]]],
+      [sun, [sun[0] - 0.13, sun[1] + 0.02, sun[2] + 0.04]],
+      [[sun[0] + 0.05, sun[1] - 0.1, sun[2] - 0.05], [sun[0] - 0.4, sun[1] + 0.2, sun[2] - 0.1]],
+    ];
+    for (const [a, b] of rays) expect(cloudExtinction(a, b)).toBeCloseTo(brute(a, b), 3);
   });
 });

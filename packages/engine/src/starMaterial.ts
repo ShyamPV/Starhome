@@ -1,6 +1,9 @@
 import { KM_PER_PC } from '@starhome/astro';
-import { BUBBLE_CENTER_KPC, DUST, DUST_MAP_EXTENT_KPC } from '@starhome/galaxy';
-import { AdditiveBlending, DataTexture, RedFormat, ShaderMaterial, Vector3, type Texture } from 'three';
+import { BUBBLE_CENTER_KPC, CLOUD_PARAMS, DUST, DUST_MAP_EXTENT_KPC } from '@starhome/galaxy';
+import { AdditiveBlending, DataTexture, RedFormat, ShaderMaterial, Vector3, Vector4, type Texture } from 'three';
+
+/** Upper bound on nearby dust clouds the shader integrates. */
+const MAX_CLOUDS = 16;
 
 /**
  * Point-sprite star shader. Each vertex is a star (or an aggregate of stars) with an
@@ -52,6 +55,10 @@ export interface SharedStarUniforms {
   uBubble: { value: Vector3 };
   /** A_lambda / A_V for the R, G, B channels. */
   uRedden: { value: Vector3 };
+  /** Nearby clouds: centre (Galactocentric kpc) and sigma (kpc); k of the closed-form line integral. */
+  uClouds: { value: Vector4[] };
+  uCloudK: { value: number[] };
+  uCloudCount: { value: number };
 }
 
 export function createSharedStarUniforms(): SharedStarUniforms {
@@ -71,6 +78,9 @@ export function createSharedStarUniforms(): SharedStarUniforms {
     uBubbleCenter: { value: new Vector3(...BUBBLE_CENTER_KPC) },
     uBubble: { value: new Vector3(DUST.bubble.inner, DUST.bubble.outer, DUST.bubble.floor) },
     uRedden: { value: new Vector3(...DUST.rgb) },
+    uClouds: { value: Array.from({ length: MAX_CLOUDS }, (_, i) => (CLOUD_PARAMS[i] ? new Vector4(...CLOUD_PARAMS[i].center, CLOUD_PARAMS[i].sigma) : new Vector4(0, 0, 0, 1))) },
+    uCloudK: { value: Array.from({ length: MAX_CLOUDS }, (_, i) => CLOUD_PARAMS[i]?.k ?? 0) },
+    uCloudCount: { value: Math.min(MAX_CLOUDS, CLOUD_PARAMS.length) },
   };
 }
 
@@ -108,6 +118,9 @@ uniform vec3 uCamGalKpc;
 uniform vec3 uBubbleCenter;
 uniform vec3 uBubble;
 uniform vec3 uRedden;
+uniform vec4 uClouds[${MAX_CLOUDS}];
+uniform float uCloudK[${MAX_CLOUDS}];
+uniform int uCloudCount;
 
 varying vec3 vColor;
 varying float vIntensity;
@@ -143,6 +156,32 @@ float extinctionV(vec3 rel, float jitter) {
   }
   return iv * sum / uDustSteps;
 }
+// Abramowitz & Stegun 7.1.26, as in dust.ts.
+float erfApprox(float x) {
+  float a = abs(x);
+  float t = 1.0 / (1.0 + 0.3275911 * a);
+  float y = 1.0 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-a * a);
+  return sign(x) * y;
+}
+// Nearby Gaussian dust clouds: exact line integral from the camera to rel (kpc), see dust.ts.
+float cloudExtinction(vec3 rel) {
+  float sum = 0.0;
+  for (int i = 0; i < ${MAX_CLOUDS}; i++) {
+    if (i >= uCloudCount) break;
+    vec4 cl = uClouds[i];
+    vec3 o = (uCamGalKpc - cl.xyz) / cl.w;
+    vec3 v = rel / cl.w;
+    float vv = dot(v, v);
+    if (vv < 1e-12) continue;
+    float ov = dot(o, v);
+    float c = dot(o, o) - ov * ov / vv;
+    if (c > 30.0) continue;
+    float vl = sqrt(vv);
+    float beta = ov / vv;
+    sum += uCloudK[i] * exp(-0.5 * c) * (erfApprox((1.0 + beta) * vl * 0.70710678) - erfApprox(beta * vl * 0.70710678));
+  }
+  return sum;
+}
 
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -165,7 +204,7 @@ void main() {
     vec3 t = modelMatrix[3].xyz;
     vec3 rel = (position + vec3(t.x, -t.z, t.y) / uKmPerPc) * 0.001;
     float jitter = fract(sin(dot(position.xy, vec2(12.9898, 78.233)) + position.z * 0.3183) * 43758.5453);
-    float av = extinctionV(rel, jitter);
+    float av = extinctionV(rel, jitter) + cloudExtinction(rel);
     flux *= exp2(-1.328771 * av);
     tint = exp2(-1.328771 * av * (uRedden - 1.0));
   }

@@ -15,8 +15,8 @@ scope: `@starhome/*`.
 |---|-------------|--------|
 | 1 | Scaffold, floating-origin camera, GPU star instancing, solar system | **Done** |
 | 2 | Whole-galaxy model: LOD tiles, dust/extinction, globular clusters, Hipparcos/Gaia blending, inside/outside views | **Done**, except Gaia DR3 tiles (see below) |
-| 3 | Ephemerides worker (VSOP87/ELP), Sky view, constellations, SGP4 satellites, time controls, HUD | Time bar and HUD done |
-| 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | |
+| 3 | Ephemerides worker (VSOP87/ELP), Sky view, constellations, SGP4 satellites, time controls, HUD | **Done** (see below) |
+| 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | **Done** (see below) |
 | 5 | Stars catalogue and HR diagram; exoplanet catalogue and 3D systems | |
 | 6 | Free travel polish, tours, Explore tab, shareable URLs | Warp-to and search done |
 | 7 | Polish, performance, PWA/offline, theming, README attributions | Themes done |
@@ -89,14 +89,78 @@ sample of glow particles (all directions, so it does not pump when the view turn
 brightens views from outside the Galaxy. A "Milky Way glow" gain brightens distant
 unresolved light, ramped in with distance so nearby layers are unaffected.
 
+### Deliverable 3: what landed
+
+- **Ephemerides:** astronomy-engine (MIT) supplies VSOP87 planets, a lunar theory,
+  precession/nutation, refraction and rise/set searches, replacing the Standish elements
+  and the crude Moon series. Checked in tests against the old independent theory, the
+  2024 April 8 total eclipse, the March 2024 equinox and sidereal time. The Earth now
+  turns with apparent sidereal time.
+- **Worker split (a deliberate change from the brief):** per-frame positions of ten bodies
+  cost microseconds, so they stay on the main thread, where they stay in step with the
+  render even at 1,000,000× time. The slow work (rise/transit/set searches, satellite pass
+  predictions) runs in a dedicated sky worker.
+- **Sky view:** the camera stands at the observer (WGS84 position from the ephemeris,
+  2 m above the ground) with a field-of-view zoom. Ground, horizon and cardinal points;
+  an additive daylight/twilight sky that also dims starlight (~8.5 magnitudes at noon);
+  alt-az and equatorial grids, ecliptic, Galactic equator; constellation lines and names;
+  planets as points with their real apparent magnitudes; satellites from CelesTrak TLEs
+  propagated with SGP4, bright only when sunlit.
+- **Panels:** location (geolocation, coordinates, observatory presets), tonight's Sun,
+  Moon, planets and Galactic centre with rise/set times, next ISS pass, and "where to find
+  it" (alt/az, RA/Dec, constellation, rise/transit/set, naked eye/binoculars/telescope)
+  for any object.
+- **Fixed along the way:** labels behind the camera were mirrored onto the screen (with a
+  1e21 km far plane their projected depth rounds to exactly 1); the LMC's disc was oriented
+  arbitrarily and looked like a streak from Earth, it is now inclined ~30° to our line of
+  sight.
+
+**Not yet:** constellation *art* (most sets are non-commercial or share-alike; needs a
+licensing decision), atmospheric extinction near the horizon, and light pollution.
+
 **Deferred to later deliverables.**
 - *Gaia DR3 regional tiles:* needs an offline pipeline (Gaia archive queries, tiling,
   hosting) that cannot be built or verified without network access to the archives;
   the blending hook (`realCatalogMagLimit`, extinction-aware) is ready for it.
 - *IndexedDB caching of generated layers* and *WebGPU culling* (deliverable 7, perf).
-- *Dust as visible absorbing volumes* in front of nebulae (deliverable 4).
 
 ## Volumetric nebulae (deliverable 4)
+
+### What landed
+
+- **19 nebulae** with real positions, distances (source shown per object), sizes and
+  integrated magnitudes: Orion, Carina, Eagle, Lagoon, Trifid, Omega, Rosette, Horsehead,
+  North America, Pelican, Tarantula, Helix, Ring, Dumbbell, Cat's Eye, Crab, Veil, the
+  Pleiades reflection nebula, and the Coalsack (as dust).
+- **Volumes:** each is an RGBA 3D texture (40³, 112³ when it fills the view) built in the
+  galaxy workers from a parametric model: blister cavity in front of a dusty wall
+  (Orion), dark pillars silhouetted against a glowing wall (Eagle), shell (Rosette), dust
+  curtain and head (Horsehead), barrel seen end-on (Ring), two tilted rings (Helix),
+  bipolar lobes (Dumbbell, Cat's Eye), synchrotron body caged by filaments (Crab), a thin
+  wrinkled shock (Veil), wisps lit by real Pleiades stars. Channels are Hα, [O III], [S II]
+  (or synchrotron / scattered light) and dust; [O III] sits closest to the ionising
+  stars (tested). The boxes are oriented on the sky by position angle with +z toward the
+  Sun, so arriving from the Sun's side shows the familiar view and you can orbit to see
+  the 3D shape.
+- **Rendering:** front-to-back raymarch in the box (jittered, up to 128 steps), starting
+  at the camera when inside, so you can fly through. Dust attenuates the emission behind
+  it and, through premultiplied blending, the stars and Milky Way behind the nebula.
+  Brightness is calibrated from the integrated magnitude (de-reddened with the dust
+  model) with the same flux convention as the stars, then exposed per object for its
+  surface brightness (like a photograph; a Settings slider scales all of them). Colours:
+  scientific emission-line colours or the Hubble palette.
+- **Nearby clouds:** 13 Gould Belt and Local Bubble wall clouds as Gaussian blobs with
+  Gaia-based distances, added to the dust model with a closed-form line integral (the
+  shader evaluates the same formula per star). This darkens the Coalsack, Taurus and
+  ρ Oph, and fixes the model's reddening toward M4.
+
+**Simplified versus the original plan:** no occupancy grid or impostors (the volumes are
+small enough to march directly at 60 fps); no single-scattering pass (reflection nebulae
+use a precomputed inverse-square illumination); no temporal accumulation; nearby dust
+from a hand-built list of clouds rather than resampled Edenhofer/Lallement 3D maps
+(those files are gigabytes and need an offline pipeline).
+
+### Original design notes
 
 - **Representation:** each nebula is a sparse 3D density texture (64³ to 256³, plus a
   coarse occupancy grid for empty-space skipping), built in a worker from a parametric
@@ -125,10 +189,12 @@ unresolved light, ramped in with distance so nearby layers are unaffected.
 | HYG database | CC BY-SA 4.0 | **Share-alike would apply to derived data.** Avoided: we build from Hipparcos directly |
 | Harris globular clusters (bundled) | Free of charge; anyone passing it on must cite the McMaster source and not charge for it | Low: cited in README and the data file |
 | Sharpless, NGC/IC, Messier | Academic catalogues, free with citation | Low |
-| CelesTrak TLEs | Free; rate limits apply | Medium: cache and throttle |
+| CelesTrak TLEs | Free; rate limits apply | Low now: cached in the browser for 4 h per group |
+| Constellation lines (d3-celestial) | BSD-3-Clause; keep the copyright notice | Low: notice kept in the data file and README |
+| astronomy-engine, satellite.js | MIT | Low |
 | Planet textures (Solar System Scope) | CC BY 4.0 | Low: credit required |
 | NASA/ESA nebula imagery (for palette reference only) | Varies; ESA/Hubble is CC BY 4.0; some NASA images contain third-party content | Medium: we use published line ratios, not images |
-| Constellation art | Many sets are non-commercial | **Medium: choose Stellarium "western" lines (GPL) or draw our own** |
+| Constellation art (figures) | Many sets are non-commercial or share-alike | **Medium: lines solved with BSD data; art still needs a permissive set or our own drawings** |
 | 3D dust maps (Edenhofer 2024, Lallement 2022) | Open data with citation | Low, but files are large (GBs): resample offline |
 
 ## Performance risks

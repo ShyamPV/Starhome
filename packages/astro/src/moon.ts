@@ -1,7 +1,8 @@
 /**
- * Low-precision geocentric Moon (Astronomical Almanac short series, ~0.3 deg).
- * Returns ecliptic-of-date coordinates, treated as J2000 ecliptic at this precision.
- * Deliverable 3 replaces this with ELP/MPP02.
+ * Crude geocentric Moon: mean elements plus the equation of centre only, so evection
+ * and variation are missing and errors reach ~2 deg. Ecliptic-of-date coordinates.
+ * The renderer uses the precise lunar theory in ephemeris.ts; this stays as an
+ * independent sanity check in tests.
  */
 import { DEG, sphericalToCartesian, type Vec3 } from './coords';
 import { J2000 } from './time';
