@@ -2,6 +2,8 @@ import type { QualityPreset } from '@starhome/engine';
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useApp, type NavSection, type Theme } from '../state/store';
+import { useShallow } from 'zustand/react/shallow';
+import { installApp, usePwa } from '../state/pwa';
 import { ChevronIcon, ExploreIcon, GalaxyIcon, SettingsIcon, SkyIcon } from './icons';
 import { ExplorePanel } from './ExplorePanel';
 import { SkyPanel } from './SkyPanel';
@@ -41,7 +43,7 @@ function Heading({ children }: { children: ReactNode }) {
 }
 
 function GalaxyPanel() {
-  const { engine, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, exoplanetMarkers, habitableZones, view, set } = useApp();
+  const { engine, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, exoplanetMarkers, habitableZones, view, set } = useApp(useShallow(({ engine, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, exoplanetMarkers, habitableZones, view, set }) => ({ engine, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, exoplanetMarkers, habitableZones, view, set })));
   const go = (id: string) => {
     // Destinations are places in the Galaxy: leave the view from the ground first.
     if (view === 'sky') {
@@ -85,13 +87,17 @@ function GalaxyPanel() {
         <dd>Fly · R/F up/down · Shift ×5</dd>
         <dt className="font-mono text-ink">Dbl-click</dt>
         <dd>Label to travel</dd>
+        <dt className="font-mono text-ink">?</dt>
+        <dd>All controls</dd>
       </dl>
     </>
   );
 }
 
 function SettingsPanel() {
-  const { quality, exposure, glow, nebulaBrightness, bloom, theme, set } = useApp();
+  const { quality, exposure, glow, nebulaBrightness, bloom, theme, adaptiveResolution, set } = useApp(
+    useShallow(({ quality, exposure, glow, nebulaBrightness, bloom, theme, adaptiveResolution, set }) => ({ quality, exposure, glow, nebulaBrightness, bloom, theme, adaptiveResolution, set })),
+  );
   const presets: QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
   const themes: { id: Theme; label: string }[] = [
     { id: 'default', label: 'Default' },
@@ -125,6 +131,8 @@ function SettingsPanel() {
       />
       <p className="text-[10px] leading-snug text-ink-faint">Each nebula is exposed for its own surface brightness, like a photograph; this scales them all.</p>
       <Toggle label="Bloom" checked={bloom} onChange={(v) => set({ bloom: v })} />
+      <Toggle label="Adaptive resolution" checked={adaptiveResolution} onChange={(v) => set({ adaptiveResolution: v })} />
+      <p className="text-[10px] leading-snug text-ink-faint">Renders at a lower resolution while the frame rate is below 45 fps, and back up when it recovers.</p>
       <Heading>Theme</Heading>
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
         {themes.map((t) => (
@@ -133,13 +141,51 @@ function SettingsPanel() {
           </button>
         ))}
       </div>
+      <Heading>App</Heading>
+      <AppStatus />
     </>
+  );
+}
+
+/** Offline readiness, installing the app, and starting over. */
+function AppStatus() {
+  const { offlineReady, installEvent } = usePwa(useShallow(({ offlineReady, installEvent }) => ({ offlineReady, installEvent })));
+  return (
+    <div className="space-y-2 text-[11px] leading-snug text-ink-dim">
+      <p>
+        {offlineReady
+          ? 'Works offline: the app and the star and exoplanet catalogues are stored on this device. Planet maps are kept once you have visited them; satellites need a connection now and then.'
+          : import.meta.env.DEV
+            ? 'Offline support is switched on in production builds.'
+            : 'Preparing offline use…'}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {installEvent && (
+          <button onClick={() => void installApp()} className="rounded-lg bg-violet/30 px-2.5 py-1 text-xs text-white hover:bg-violet/45">
+            Install app
+          </button>
+        )}
+        <button
+          onClick={() => {
+            try {
+              localStorage.removeItem('starhome.settings');
+            } catch {
+              // Nothing stored.
+            }
+            window.location.reload();
+          }}
+          className="rounded-lg border border-line px-2.5 py-1 text-xs text-ink-dim hover:text-ink"
+        >
+          Reset display settings
+        </button>
+      </div>
+    </div>
   );
 }
 
 /** Collapsible left navigation: icon rail plus a panel for the active section. */
 export function NavRail() {
-  const { nav, navOpen, setNav, toggleNav } = useApp();
+  const { nav, navOpen, setNav, toggleNav } = useApp(useShallow(({ nav, navOpen, setNav, toggleNav }) => ({ nav, navOpen, setNav, toggleNav })));
   return (
     <nav className="pointer-events-auto flex h-full gap-2" aria-label="Main">
       <div className="glass flex w-14 flex-col items-center gap-1 rounded-2xl py-3">
@@ -176,7 +222,7 @@ export function NavRail() {
 
 /** Pushes settings from the store into the engine and the document theme. */
 export function useEngineSettings() {
-  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, nebulaBrightness, exoplanetMarkers, habitableZones, theme, view, location, skyLayers } = useApp();
+  const { engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, nebulaBrightness, exoplanetMarkers, habitableZones, theme, view, location, skyLayers } = useApp(useShallow(({ engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, nebulaBrightness, exoplanetMarkers, habitableZones, theme, view, location, skyLayers }) => ({ engine, quality, exposure, glow, bloom, orbits, labels, dust, clusters, arms, nebulae, nebulaPalette, nebulaBrightness, exoplanetMarkers, habitableZones, theme, view, location, skyLayers })));
   useEffect(() => engine?.setQuality(quality), [engine, quality]);
   useEffect(() => engine?.setExposure(exposure), [engine, exposure]);
   useEffect(() => engine?.setDiffuseGain(glow), [engine, glow]);
@@ -184,6 +230,8 @@ export function useEngineSettings() {
   useEffect(() => engine?.setSkyLayers(skyLayers), [engine, skyLayers]);
   useEffect(() => engine?.setViewMode(view), [engine, view]);
   useEffect(() => engine?.setBloom(bloom), [engine, bloom]);
+  const adaptiveResolution = useApp((s) => s.adaptiveResolution);
+  useEffect(() => engine?.setAdaptiveResolution(adaptiveResolution), [engine, adaptiveResolution]);
   useEffect(() => engine?.setOrbitsVisible(orbits), [engine, orbits]);
   useEffect(() => engine?.setLabelsVisible(labels), [engine, labels]);
   useEffect(() => engine?.setLayerVisible('dust', dust), [engine, dust]);
@@ -193,7 +241,7 @@ export function useEngineSettings() {
   useEffect(() => engine?.setNebulaPalette(nebulaPalette), [engine, nebulaPalette]);
   useEffect(() => engine?.setNebulaBrightness(nebulaBrightness), [engine, nebulaBrightness]);
   // Host markers show with the layer toggle, or while the exoplanet catalogue is open.
-  const { nav, navOpen, exploreTab } = useApp();
+  const { nav, navOpen, exploreTab } = useApp(useShallow(({ nav, navOpen, exploreTab }) => ({ nav, navOpen, exploreTab })));
   const showHosts = exoplanetMarkers || (nav === 'explore' && navOpen && exploreTab === 'exoplanets');
   useEffect(() => engine?.setLayerVisible('exoplanets', showHosts), [engine, showHosts]);
   useEffect(() => engine?.setHabitableZonesVisible(habitableZones), [engine, habitableZones]);

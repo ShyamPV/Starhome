@@ -2,8 +2,9 @@ import { Hud, LoadingPill, ScaleBar, WarpPill } from './components/Hud';
 import { InfoPanel } from './components/InfoPanel';
 import { NavRail, useEngineSettings } from './components/NavRail';
 import { Search } from './components/Search';
+import { Shortcuts } from './components/Shortcuts';
 import { TimeBar } from './components/TimeBar';
-import { Toast, TopActions } from './components/TopActions';
+import { AppNotices, Toast, TopActions } from './components/TopActions';
 import { TourPlayer } from './components/TourPlayer';
 import { Viewport } from './components/Viewport';
 import { useUrlSync } from './state/urlSync';
@@ -30,6 +31,7 @@ export function App() {
           <Hud />
           <div className="flex flex-col items-center gap-2">
             <TourPlayer />
+            <AppNotices />
             <Toast />
             <WarpPill />
             <LoadingPill />
@@ -39,6 +41,7 @@ export function App() {
         </footer>
       </div>
       <InfoPanel />
+      <Shortcuts />
     </main>
   );
 }

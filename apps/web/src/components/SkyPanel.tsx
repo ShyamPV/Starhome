@@ -3,6 +3,7 @@ import type { SatellitePass } from '@starhome/astro';
 import type { SkyLayers, TonightRow } from '@starhome/engine';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '../state/store';
+import { useShallow } from 'zustand/react/shallow';
 import { formatLatLon, formatTime } from './skyFormat';
 
 const PRESETS: { label: string; loc: GeoLocation }[] = [
@@ -38,7 +39,7 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
 }
 
 function LocationEditor() {
-  const { location, setLocation } = useApp();
+  const { location, setLocation } = useApp(useShallow(({ location, setLocation }) => ({ location, setLocation })));
   const [lat, setLat] = useState(String(location.latDeg));
   const [lon, setLon] = useState(String(location.lonDeg));
   const [status, setStatus] = useState<string | null>(null);
@@ -185,7 +186,7 @@ function Tonight() {
 
 /** Left-panel section for the real-time sky from the Earth. */
 export function SkyPanel() {
-  const { view, set, skyLayers, setSkyLayer } = useApp();
+  const { view, set, skyLayers, setSkyLayer } = useApp(useShallow(({ view, set, skyLayers, setSkyLayer }) => ({ view, set, skyLayers, setSkyLayer })));
   const inSky = view === 'sky';
   return (
     <>

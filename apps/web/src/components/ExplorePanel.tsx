@@ -1,6 +1,7 @@
 import { SIZE_CLASS_LABEL, type Exoplanet, type ExoplanetCatalog, type SizeClass } from '@starhome/data';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../state/store';
+import { useShallow } from 'zustand/react/shallow';
 import { DiscoverTab } from './DiscoverTab';
 import { HrDiagram } from './HrDiagram';
 import { ToursTab } from './ToursTab';
@@ -274,7 +275,7 @@ function ExoplanetsTab() {
 
 /** Explore: the catalogue hub, the star catalogue with its HR diagram, the exoplanet catalogue and tours. */
 export function ExplorePanel() {
-  const { exploreTab, set } = useApp();
+  const { exploreTab, set } = useApp(useShallow(({ exploreTab, set }) => ({ exploreTab, set })));
   return (
     <>
       <div className="mb-3 grid grid-cols-4 gap-1 rounded-xl bg-white/5 p-1" role="tablist">

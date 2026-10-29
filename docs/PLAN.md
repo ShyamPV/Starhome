@@ -19,7 +19,7 @@ scope: `@starhome/*`.
 | 4 | Volumetric nebulae and 3D dust (Local Bubble, Gould Belt) | **Done** (see below) |
 | 5 | Stars catalogue and HR diagram; exoplanet catalogue and 3D systems | **Done** (see below) |
 | 6 | Free travel polish, tours, Explore tab, shareable URLs | **Done** (see below) |
-| 7 | Polish, performance, PWA/offline, theming, README attributions | Themes done |
+| 7 | Polish, performance, PWA/offline, theming, README attributions | **Done** (see below) |
 
 ## Rendering a hundred-million-star galaxy in the browser
 
@@ -123,6 +123,53 @@ licensing decision), atmospheric extinction near the horizon, and light pollutio
   hosting) that cannot be built or verified without network access to the archives;
   the blending hook (`realCatalogMagLimit`, extinction-aware) is ready for it.
 - *IndexedDB caching of generated layers* and *WebGPU culling* (deliverable 7, perf).
+
+### Deliverable 7: what landed
+
+- **Solar System:** surface maps for the Sun, planets and Moon (Solar System Scope, CC BY
+  4.0, fetched by `tools/fetch-textures.mjs` and loaded only when the camera comes close),
+  Earth's night lights on the dark side and a cloud layer, Saturn's ring with its radial
+  map, and IAU rotation models for every body, so Mars shows the face really turned to
+  the Sun.
+- **20 major moons.** The Galilean moons come from the L1.2 theory in astronomy-engine.
+  For the others, JPL's published mean-element tables turned out not to be reproducible:
+  Deimos, Charon, Ganymede and Callisto matched Horizons, but Saturn's moons were off by
+  up to 157° even at the epoch, and Uranus' tables use the pole opposite the IAU one.
+  Instead `tools/build-moon-elements.mjs` fits secular elements (node, periapsis, mean
+  longitude) to Horizons state vectors over 2000-2050, with a libration term for Mimas
+  (48°, 76 years: its resonance with Tethys). All 16 fits are within 2.1° of Horizons over
+  that span; each moon's panel shows its own figure, and tests check them. Moons rotate
+  synchronously, with orbit lines that appear near their planet.
+- **Offline and installable (PWA):** a manifest, icons (rendered from the SVG logo by
+  `tools/build-icons.mjs`) and a service worker generated at build time by a small Vite
+  plugin (`apps/web/pwa.ts`), with no new dependency. It precaches the hashed build and
+  the exoplanet catalogue, caches planet maps and optional catalogues the first time
+  they are used, serves pages network-first with an offline fallback, and lets a new
+  version wait until the visitor chooses to reload. Tested: offline reload restores the
+  last view with Jupiter's map; an update shows the prompt and clears the old cache.
+- **Performance:** profiling showed two avoidable costs. The HUD's nearest-object search
+  evaluated all 6,451 exoplanet orbits ten times a second; now only the planets of the
+  open system count. The whole React tree re-rendered on every HUD tick because a few
+  components subscribed to the entire store; they now use shallow selectors. Main-thread
+  time fell from 44-50% to 30-42% (development build). Adaptive resolution steps the render
+  scale down to 50% when the frame rate stays below 45 fps and back up with headroom.
+  Libraries are split into separately cached chunks (three.js, React, astronomy).
+- **Polish:** settings persist; high contrast is chosen on first visit when the system asks
+  for more contrast; **?** shows every control and Esc closes details; a clear message
+  replaces a blank screen when WebGL 2 is missing; an offline notice; the README is now
+  the complete user and attribution document.
+
+## What is not done yet
+
+- Gaia DR3 regional tiles streamed on demand (the brief's real-star tiles beyond
+  Hipparcos); the synthetic galaxy fills those regions and is marked as modeled.
+- Constellation art (figures need a permissively licensed set or our own drawings).
+- Images per object in the Explore hub, and surface maps for moons other than our own.
+- Refreshing the exoplanet snapshot automatically (needs a server or CI job).
+- Binary-star orbits (Kepler-16 is drawn as one star) and exoplanet moons.
+- "Visible tonight" times in the observer's own time zone rather than the browser's.
+- WebGPU renderer (WebGL 2 is the baseline).
+- Touch gestures beyond single-finger orbit (the brief targets desktop browsers).
 
 ### Deliverable 6: what landed
 
@@ -256,7 +303,8 @@ from a hand-built list of clouds rather than resampled Edenhofer/Lallement 3D ma
 | CelesTrak TLEs | Free; rate limits apply | Low now: cached in the browser for 4 h per group |
 | Constellation lines (d3-celestial) | BSD-3-Clause; keep the copyright notice | Low: notice kept in the data file and README |
 | astronomy-engine, satellite.js | MIT | Low |
-| Planet textures (Solar System Scope) | CC BY 4.0 | Low: credit required |
+| Planet textures (Solar System Scope) | CC BY 4.0 | Low: credited in the README, `public/textures/ATTRIBUTION.txt` and each body's panel |
+| JPL Horizons ephemerides (moon fits) | US government work, free with credit | Low: credited in the README and the data file |
 | NASA/ESA nebula imagery (for palette reference only) | Varies; ESA/Hubble is CC BY 4.0; some NASA images contain third-party content | Medium: we use published line ratios, not images |
 | Constellation art (figures) | Many sets are non-commercial or share-alike | **Medium: lines solved with BSD data; art still needs a permissive set or our own drawings** |
 | 3D dust maps (Edenhofer 2024, Lallement 2022) | Open data with citation | Low, but files are large (GBs): resample offline |
@@ -264,8 +312,8 @@ from a hand-built list of clouds rather than resampled Edenhofer/Lallement 3D ma
 ## Performance risks
 
 - **Fill rate:** millions of additive sprites over 4K screens. Mitigations: per-vertex
-  culling of faint stars (already in the shader), level of detail via draw-range
-  prefixes, and resolution scaling per quality preset.
+  culling of faint stars (in the shader), level of detail via draw-range prefixes, a
+  pixel-ratio cap per quality preset, and adaptive resolution (deliverable 7).
 - **Generation hitches:** all generation runs in a worker pool with transferable
   buffers; the glow layer for High/Ultra takes about 1 to 3 s at start-up. Plan: cache
   it in IndexedDB (Dexie) in deliverable 2.

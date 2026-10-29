@@ -38,6 +38,7 @@ const R_EARTH_KM = 6371;
 const R_SUN_KM = 695_700;
 /** Systems open up (meshes, orbits, labels) inside this distance from the host, km. */
 const SYSTEM_RANGE_KM = 0.05 * KM_PER_PC;
+const EMPTY: ReadonlySet<string> = new Set();
 
 export const CLASS_COLOR: Record<string, string> = {
   rocky: '#c9a27a',
@@ -404,6 +405,13 @@ export class ExoplanetLayer {
     return r ? { p: r.p, host: r.h.host } : null;
   }
 
+  private readonly lastScan = new Vector3(Infinity, 0, 0);
+
+  /** Ids of the planets of the system the camera is in (the only ones worth testing for "nearest"). */
+  get activePlanetIds(): ReadonlySet<string> {
+    return this.system?.planetIds ?? EMPTY;
+  }
+
   update(cameraKm: Vector3, selectedId: string | null): void {
     this.hostBatch?.rebase(cameraKm);
     const m = this.markers.matrix.elements;
@@ -412,14 +420,18 @@ export class ExoplanetLayer {
     m[14] = this.sunKm.z - cameraKm.z;
     this.markers.matrixWorldNeedsUpdate = true;
 
-    // Open the nearest system within range.
-    let best: HostEntry | null = null;
-    let bestD = SYSTEM_RANGE_KM;
-    for (const e of this.hosts) {
-      const d = e.worldKm.distanceTo(cameraKm);
-      if (d < bestD) {
-        bestD = d;
-        best = e;
+    // Open the nearest system within range (rescanning the hosts only after the camera has moved).
+    let best: HostEntry | null = this.system?.entry ?? null;
+    if (this.lastScan.distanceTo(cameraKm) > SYSTEM_RANGE_KM * 0.05 || (best && best.worldKm.distanceTo(cameraKm) > SYSTEM_RANGE_KM)) {
+      this.lastScan.copy(cameraKm);
+      best = null;
+      let bestD = SYSTEM_RANGE_KM;
+      for (const e of this.hosts) {
+        const d = e.worldKm.distanceTo(cameraKm);
+        if (d < bestD) {
+          bestD = d;
+          best = e;
+        }
       }
     }
     if (this.system && this.system.entry !== best) {
@@ -445,6 +457,9 @@ export class ExoplanetLayer {
 /** A planetary system up close: star, planets, orbits and habitable zone, around one host. */
 class SystemView {
   readonly group = new Group();
+  get planetIds(): ReadonlySet<string> {
+    return new Set(this.planets.map((x) => x.p.id));
+  }
   private readonly planets: { p: Exoplanet; mesh: Mesh; label: CSS2DObject; material: ShaderMaterial }[] = [];
   private hz: Group | null = null;
   private hzFill: Mesh | null = null;

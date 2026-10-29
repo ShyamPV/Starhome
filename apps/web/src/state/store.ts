@@ -82,6 +82,8 @@ interface AppState {
   /** Display gain for nebulae (1 = true surface brightness). */
   nebulaBrightness: number;
   theme: Theme;
+  /** Render below full resolution while the frame rate is low. */
+  adaptiveResolution: boolean;
   rateIndex: number;
   reverse: boolean;
   paused: boolean;
@@ -103,8 +105,44 @@ interface AppState {
   endTour: () => void;
   showToast: (text: string) => void;
   set: (
-    patch: Partial<Pick<AppState, 'view' | 'exploreTab' | 'exoplanetMarkers' | 'habitableZones' | 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'nebulae' | 'nebulaPalette' | 'nebulaBrightness' | 'theme' | 'rateIndex' | 'reverse' | 'paused'>>,
+    patch: Partial<Pick<AppState, 'view' | 'exploreTab' | 'exoplanetMarkers' | 'habitableZones' | 'quality' | 'exposure' | 'glow' | 'bloom' | 'orbits' | 'labels' | 'dust' | 'clusters' | 'arms' | 'nebulae' | 'nebulaPalette' | 'nebulaBrightness' | 'theme' | 'adaptiveResolution' | 'rateIndex' | 'reverse' | 'paused'>>,
   ) => void;
+}
+
+/** Display settings remembered in this browser (layers, quality, theme...). */
+const SETTINGS_KEY = 'starhome.settings';
+const PERSISTED = [
+  'quality',
+  'exposure',
+  'glow',
+  'bloom',
+  'orbits',
+  'labels',
+  'dust',
+  'clusters',
+  'arms',
+  'nebulae',
+  'nebulaPalette',
+  'nebulaBrightness',
+  'exoplanetMarkers',
+  'habitableZones',
+  'theme',
+  'adaptiveResolution',
+] as const satisfies readonly (keyof AppState)[];
+type Persisted = Pick<AppState, (typeof PERSISTED)[number]>;
+
+function loadSettings(): Partial<Persisted> {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) {
+      const v = JSON.parse(raw) as Record<string, unknown>;
+      return Object.fromEntries(PERSISTED.filter((k) => k in v).map((k) => [k, v[k]])) as Partial<Persisted>;
+    }
+  } catch {
+    // Blocked or corrupt storage: defaults.
+  }
+  // First visit: follow the system's high-contrast preference.
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-contrast: more)').matches ? { theme: 'contrast' } : {};
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -138,6 +176,7 @@ export const useApp = create<AppState>((set, get) => ({
   nebulaPalette: 'scientific',
   nebulaBrightness: 1,
   theme: 'default',
+  adaptiveResolution: true,
   rateIndex: 0,
   reverse: false,
   paused: false,
@@ -190,4 +229,14 @@ export const useApp = create<AppState>((set, get) => ({
     window.setTimeout(() => set((s) => (s.toast === toast ? { toast: null } : {})), 2500);
   },
   set: (patch) => set(patch),
+  ...loadSettings(),
 }));
+
+useApp.subscribe((s, prev) => {
+  if (!PERSISTED.some((k) => s[k] !== prev[k])) return;
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.fromEntries(PERSISTED.map((k) => [k, s[k]]))));
+  } catch {
+    // Not persisted; fine for this session.
+  }
+});

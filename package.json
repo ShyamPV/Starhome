@@ -14,7 +14,10 @@
     "data:hipparcos": "node tools/build-hipparcos.mjs",
     "data:globulars": "node tools/build-globulars.mjs",
     "data:constellations": "node tools/build-constellations.mjs",
-    "data:exoplanets": "node tools/build-exoplanets.mjs"
+    "data:exoplanets": "node tools/build-exoplanets.mjs",
+    "data:textures": "node tools/fetch-textures.mjs",
+    "build:icons": "node tools/build-icons.mjs",
+    "data:moons": "node tools/build-moon-elements.mjs"
   },
   "engines": {
     "node": ">=20"

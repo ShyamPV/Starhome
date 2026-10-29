@@ -174,6 +174,8 @@ export interface Hud {
   sky: SkyHud | null;
   /** Name of the destination while a warp is under way. */
   travellingTo: string | null;
+  /** Fraction of full resolution being rendered (below 1 when adaptive resolution steps in). */
+  renderScale: number;
 }
 
 /** Fly through the Galaxy, or stand on the Earth and look up. */
@@ -245,6 +247,8 @@ export interface EngineOptions {
   /** Called when targets are added after start-up (the exoplanet catalogue loads asynchronously). */
   onTargetsChanged?: (targets: TargetSummary[]) => void;
   onExoplanets?: (catalog: ExoplanetCatalog) => void;
+  /** Folder of Solar System surface maps (tools/fetch-textures.mjs), e.g. "/textures/". */
+  texturesUrl?: string;
   /** Called when a flight reaches its destination (for "visited" tracking). */
   onArrive?: (id: string) => void;
 }
@@ -332,6 +336,10 @@ export class Engine {
   private fps = 0;
   private fpsTime = performance.now();
   private disposed = false;
+  /** Adaptive resolution: render below full resolution while the frame rate is low. */
+  private adaptive = true;
+  private renderScale = 1;
+  private perf = { frames: 0, seconds: 0, settleUntil: performance.now() + 6000 };
 
   constructor(private readonly opts: EngineOptions) {
     this.quality = opts.quality ?? 'medium';
@@ -339,7 +347,7 @@ export class Engine {
     const q = QUALITY[this.quality];
 
     this.renderer = new WebGLRenderer({ canvas: opts.canvas, antialias: false, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q.maxPixelRatio));
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1;
     this.renderer.setClearColor(0x000000, 1);
@@ -360,6 +368,7 @@ export class Engine {
     this.rig.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
     this.scene.add(this.solar.group);
+    if (opts.texturesUrl) this.solar.setTextureBase(opts.texturesUrl);
     this.cells = new GridStreamer([this.cellMaterial, this.cellHazeMaterial], this.cellOptions());
     this.nearTiles = new GridStreamer([this.nearMaterial], this.tileOptions('near'));
     this.farTiles = new GridStreamer([this.farMaterial], this.tileOptions('far'));
@@ -593,7 +602,9 @@ export class Engine {
     if (q === this.quality) return;
     this.quality = q;
     const p = QUALITY[q];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, p.maxPixelRatio));
+    this.renderScale = 1;
+    this.perf.settleUntil = performance.now() + 6000;
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.bloom.enabled = p.bloom;
     this.shared.uDustSteps.value = p.dustSteps;
     this.cells.reset(this.cellOptions());
@@ -604,6 +615,40 @@ export class Engine {
     this.applyPixelSizes();
     this.resize();
     this.loadGlow();
+  }
+
+  /** Full resolution for this quality preset, times the adaptive scale. */
+  private pixelRatio(): number {
+    return Math.min(window.devicePixelRatio, QUALITY[this.quality].maxPixelRatio) * this.renderScale;
+  }
+
+  /** Lower the rendering resolution while the frame rate is low (on by default). */
+  setAdaptiveResolution(on: boolean): void {
+    this.adaptive = on;
+    if (!on && this.renderScale !== 1) this.setRenderScale(1);
+  }
+
+  private setRenderScale(scale: number): void {
+    this.renderScale = scale;
+    this.renderer.setPixelRatio(this.pixelRatio());
+    this.applyPixelSizes();
+    this.resize();
+  }
+
+  /**
+   * Every two seconds: below ~45 fps step the resolution down (to half at most); with
+   * headroom at full speed step it back up. Skipped while things are still loading.
+   */
+  private adaptResolution(dt: number, now: number): void {
+    if (!this.adaptive || now < this.perf.settleUntil) return;
+    this.perf.frames++;
+    this.perf.seconds += dt;
+    if (this.perf.seconds < 2) return;
+    const fps = this.perf.frames / this.perf.seconds;
+    this.perf.frames = 0;
+    this.perf.seconds = 0;
+    if (fps < 45 && this.renderScale > 0.5) this.setRenderScale(Math.max(0.5, this.renderScale * 0.85));
+    else if (fps > 57 && this.renderScale < 1) this.setRenderScale(Math.min(1, this.renderScale / 0.85));
   }
 
   setExposure(ev: number): void {
@@ -843,7 +888,9 @@ export class Engine {
     if (!anchor) {
       // Free camera: measure from the nearest object for precision.
       let best = Infinity;
+      const activePlanets = this.exoplanets.activePlanetIds;
       for (const t of this.targets) {
+        if (t.kind === 'exoplanet' && !activePlanets.has(t.id)) continue;
         const d = t.position().distanceToSquared(this.rig.target);
         if (d < best) {
           best = d;
@@ -1012,6 +1059,7 @@ export class Engine {
     this.composer.render(dt);
     this.labels.render(this.scene, this.camera);
 
+    this.adaptResolution(dt, now);
     this.frames++;
     if (now - this.fpsTime > 500) {
       this.fps = (this.frames * 1000) / (now - this.fpsTime);
@@ -1066,11 +1114,16 @@ export class Engine {
     const cam = this.rig.position;
     let nearest: Hud['nearest'] = null;
     let nearestTarget: Target | null = null;
+    const activePlanets = this.exoplanets.activePlanetIds;
     for (const t of this.targets) {
       if (t.kind === 'galaxy' || t.kind === 'region') continue;
+      // Exoplanets count only inside their own system (their host stands in for them elsewhere).
+      if (t.kind === 'exoplanet' && !activePlanets.has(t.id)) continue;
       const d = t.position().distanceTo(cam);
       // From outside the planetary system, report the Sun rather than an individual planet.
       if ((t.kind === 'planet' || t.kind === 'dwarf-planet' || t.kind === 'moon') && d > 2000 * KM_PER_AU) continue;
+      // Likewise a moon only once we are among its planet's moons, not merely nearer to it than to the planet.
+      if (t.kind === 'moon' && d > 0.05 * KM_PER_AU) continue;
       if (!nearest || d < nearest.distanceKm) {
         nearest = { id: t.id, name: t.name, distanceKm: Math.max(0, d - t.radiusKm) };
         nearestTarget = t;
@@ -1120,6 +1173,7 @@ export class Engine {
       view: this.viewMode,
       sky: sky ? this.sky.hud(this.rig.sky.alt, this.rig.sky.az, this.rig.sky.fov) : null,
       travellingTo: this.travelling && this.rig.flying ? this.travelling.name : null,
+      renderScale: this.renderScale,
     };
   }
 
@@ -1131,6 +1185,7 @@ export class Engine {
     this.pool.dispose();
     for (const layer of [this.cells, this.nearTiles, this.farTiles, this.clusters]) layer.dispose();
     this.sky.dispose();
+    this.solar.dispose();
     this.nebulae.dispose();
     this.exoplanets.dispose();
     this.glow?.dispose();

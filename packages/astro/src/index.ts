@@ -8,3 +8,4 @@ export * from './ephemeris';
 export * from './satellites';
 export * from './stars';
 export * from './visibility';
+export * from './moons';

@@ -159,3 +159,44 @@ test('explore hub: favourites persist, curated lists, tours and surprise', async
   await page.getByRole('button', { name: 'Surprise me' }).click();
   await expect(page.getByRole('complementary', { name: / details$/ })).toBeVisible();
 });
+
+test('solar system: major moons with their orbit accuracy and sources', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByLabel('Galactic position')).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press('Control+K');
+  await page.keyboard.type('Titan');
+  await expect(page.getByRole('option').first()).toContainText('Moon of Saturn');
+  await page.keyboard.press('Enter');
+  const titan = page.getByRole('complementary', { name: 'Titan details' });
+  await expect(titan).toContainText('Position accuracy');
+  await expect(titan).toContainText('JPL Horizons');
+  await expect(page.getByLabel('Galactic position')).toContainText('Titan', { timeout: 30_000 });
+  await page.keyboard.press('Control+K');
+  await page.keyboard.type('Mars');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('complementary', { name: 'Mars details' })).toContainText('Solar System Scope (CC BY 4.0)');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('complementary', { name: 'Mars details' })).toBeHidden();
+});
+
+test('settings persist across a reload, and ? lists the controls', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const bloom = page.getByRole('checkbox', { name: 'Bloom' });
+  await expect(bloom).toBeChecked();
+  await page.getByText('Bloom', { exact: true }).click();
+  await page.getByRole('button', { name: 'High contrast' }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Bloom' })).not.toBeChecked();
+  await expect(page.locator('html')).toHaveClass(/theme-contrast/);
+  await page.getByRole('button', { name: 'Reset display settings' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Bloom' })).toBeChecked();
+
+  await page.keyboard.press('Shift+Slash');
+  const dialog = page.getByRole('dialog', { name: 'Controls' });
+  await expect(dialog).toContainText('Ctrl/⌘ K');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+});

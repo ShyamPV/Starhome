@@ -1,6 +1,7 @@
 import { dateToJulian, julianToDate } from '@starhome/astro';
 import { useEffect } from 'react';
 import { TIME_RATES, useApp } from '../state/store';
+import { useShallow } from 'zustand/react/shallow';
 import { FasterIcon, PauseIcon, PlayIcon, ReverseIcon, SlowerIcon } from './icons';
 
 function rateLabel(rate: number): string {
@@ -20,7 +21,7 @@ const btn = 'grid size-8 place-items-center rounded-lg text-ink-dim hover:bg-whi
 export function TimeBar() {
   const engine = useApp((s) => s.engine);
   const jd = useApp((s) => s.hud?.jd);
-  const { rateIndex, reverse, paused, set } = useApp();
+  const { rateIndex, reverse, paused, set } = useApp(useShallow(({ rateIndex, reverse, paused, set }) => ({ rateIndex, reverse, paused, set })));
 
   useEffect(() => {
     if (!engine) return;

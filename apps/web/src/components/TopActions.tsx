@@ -1,5 +1,6 @@
 import { pickSurprise } from '../catalog';
 import { useApp } from '../state/store';
+import { applyUpdate, usePwa } from '../state/pwa';
 import { shareUrl } from '../state/urlSync';
 import { DiceIcon, LinkIcon } from './icons';
 
@@ -58,5 +59,28 @@ export function Toast() {
     <div className="glass pointer-events-none rounded-full px-3 py-1.5 text-[11px] text-ink" role="status">
       {toast}
     </div>
+  );
+}
+
+/** A new version is ready, or the connection is gone. */
+export function AppNotices() {
+  const waiting = usePwa((s) => s.waiting);
+  const online = usePwa((s) => s.online);
+  return (
+    <>
+      {waiting && (
+        <div className="glass pointer-events-auto flex items-center gap-2 rounded-full py-1 pr-1 pl-3 text-[11px] text-ink" role="status">
+          A new version of Starhome is ready
+          <button onClick={applyUpdate} className="rounded-full bg-violet/40 px-2.5 py-0.5 text-white hover:bg-violet/60">
+            Reload
+          </button>
+        </div>
+      )}
+      {!online && (
+        <div className="glass pointer-events-none rounded-full px-3 py-1.5 text-[11px] text-ink-dim" role="status">
+          Offline: using stored data. Satellite positions may be out of date.
+        </div>
+      )}
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import { KM_PER_AU, KM_PER_KPC, KM_PER_PC, SUN_GALACTOCENTRIC_PC, absoluteMagnitude, raDecDistToGalactocentric, starPhysics, type LifeStage, type Vec3 } from '@starhome/astro';
-import { COMPACT_OBJECTS, GLOBULAR_CLUSTERS, MOON, NAMED_STARS, PLANETS, SUN, type NamedStar } from '@starhome/data';
+import { COMPACT_OBJECTS, GLOBULAR_CLUSTERS, MOON, MOON_ELEMENTS_SOURCE, NAMED_STARS, PLANETS, SUN, type NamedStar } from '@starhome/data';
 import { NEBULAE, SATELLITES, SPIRAL_ARMS, armRadius, isModeledArmSegment, xyFromRBeta } from '@starhome/galaxy';
 import { Vector3 } from 'three';
 import { galPcToWorldKm } from './frames';
@@ -52,7 +52,10 @@ export interface Target {
   star?: NamedStar;
 }
 
-const SOLAR_SYSTEM_SOURCE = 'Positions: astronomy-engine (VSOP87, lunar theory). Physical data: NASA Planetary Fact Sheets.';
+const GALILEAN_A_KM: Record<string, number> = { io: 421_800, europa: 671_100, ganymede: 1_070_400, callisto: 1_882_700 };
+const GALILEAN_PERIOD_DAYS: Record<string, number> = { io: 1.769138, europa: 3.551181, ganymede: 7.154553, callisto: 16.689018 };
+const SOLAR_SYSTEM_SOURCE = 'Positions: astronomy-engine (VSOP87, lunar theory). Physical data: NASA Planetary Fact Sheets. Rotation: IAU WGCCRE.';
+const MAP_CREDIT = ' Surface map: Solar System Scope (CC BY 4.0), from NASA imagery.';
 const SGR_A_STAR_RS_KM = 1.27e7; // Schwarzschild radius for 4.3e6 M_sun
 
 export const STAGE_LABEL: Record<LifeStage, string> = {
@@ -100,7 +103,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
     radiusKm: SUN.radiusKm,
     viewDistanceKm: SUN.radiusKm * 8,
     provenance: 'ephemeris',
-    source: SOLAR_SYSTEM_SOURCE,
+    source: SOLAR_SYSTEM_SOURCE + MAP_CREDIT,
     facts: SUN.facts,
     details: { 'Spectral type': 'G2V', 'Radius': '695,700 km', 'Teff': '5,772 K', 'Distance to Galactic centre': '8.18 kpc' },
     labelRange: 300 * KM_PER_KPC,
@@ -117,7 +120,7 @@ export function buildTargets(ss: SolarSystem): Target[] {
       radiusKm: info.radiusKm,
       viewDistanceKm: info.radiusKm * (info.ring ? 9 : 5),
       provenance: 'ephemeris',
-      source: SOLAR_SYSTEM_SOURCE,
+      source: SOLAR_SYSTEM_SOURCE + (info.texture ? MAP_CREDIT : ' Drawn in a display colour (no surface map).'),
       facts: info.facts,
       details: { Radius: `${info.radiusKm.toLocaleString('en-US')} km`, 'Rotation period': `${Math.abs(info.rotationHours).toFixed(2)} h${info.rotationHours < 0 ? ' (retrograde)' : ''}` },
       labelRange: info.id === 'moon' ? 0.05 * KM_PER_AU : 400 * KM_PER_AU,
@@ -154,6 +157,34 @@ export function buildTargets(ss: SolarSystem): Target[] {
       galPc,
       apparentMag: s.vmag,
       star: s,
+    });
+  }
+
+  const PARENT_NAME = Object.fromEntries(PLANETS.map((p) => [p.id, p.name]));
+  for (const s of ss.satellites.values()) {
+    const m = s.info;
+    const fitted = typeof m.orbit === 'string' ? null : m.orbit;
+    const aKm = fitted ? fitted.aKm : GALILEAN_A_KM[m.orbit as string]!;
+    const periodDays = fitted ? 360 / Math.abs(fitted.meanMotion) : GALILEAN_PERIOD_DAYS[m.orbit as string]!;
+    targets.push({
+      id: m.id,
+      name: m.name,
+      kind: 'moon',
+      subtitle: `Moon of ${PARENT_NAME[m.parent]}`,
+      position: () => s.world,
+      radiusKm: m.radiusKm,
+      viewDistanceKm: m.radiusKm * 6,
+      provenance: 'ephemeris',
+      source: fitted ? `Orbit: ${MOON_ELEMENTS_SOURCE} Radius: JPL physical parameters.` : 'Orbit: L1.2 theory (Lieske) via astronomy-engine. Radius: JPL physical parameters.',
+      facts: [...m.facts, 'Drawn in a single display colour: no surface map is included for this moon.'],
+      details: {
+        Radius: `${m.radiusKm.toLocaleString('en-US')} km`,
+        'Orbit radius': `${Math.round(aKm).toLocaleString('en-US')} km`,
+        'Orbital period': `${periodDays < 2 ? `${(periodDays * 24).toFixed(1)} hours` : `${periodDays.toFixed(2)} days`}${fitted && fitted.iDeg > 90 ? ' (retrograde)' : ''}`,
+        Rotation: 'Synchronous (always the same face to its planet)',
+        'Position accuracy': fitted ? `within ${Math.max(0.1, fitted.maxErrorDeg).toFixed(1)}° of JPL along its orbit, 2000-2050` : 'a few hundred km',
+      },
+      labelRange: aKm * 25,
     });
   }
 
